@@ -1,0 +1,2 @@
+# Corre las pruebas unitarias de cada paquete antes de subir cambios
+npm run test:unit
