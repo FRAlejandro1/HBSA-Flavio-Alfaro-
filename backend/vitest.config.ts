@@ -6,6 +6,19 @@ export default defineConfig({
     environment: 'node',
     // Todas las pruebas viven en tests/{unit,integration,e2e,performance}
     include: ['tests/**/*.test.ts'],
+    // Variables minimas para que config/env.ts valide al importarse en las pruebas
+    env: {
+      CORS_ORIGINS: 'http://localhost:5173',
+      DB_HOST: 'localhost',
+      DB_USER: 'usuario_pruebas',
+      DB_PASSWORD: 'clave_pruebas',
+      DB_NAME: 'base_pruebas',
+      REDIS_URL: 'redis://localhost:6379',
+      JWT_ACCESS_SECRET: 'secreto-de-acceso-solo-para-pruebas-0001',
+      JWT_REFRESH_SECRET: 'secreto-de-refresh-solo-para-pruebas-0002',
+      JWT_ACCESS_TTL: '15m',
+      JWT_REFRESH_TTL: '7d',
+    },
     coverage: {
       provider: 'v8',
       // lcov.info es el archivo que consume SonarCloud
