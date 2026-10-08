@@ -1,0 +1,6 @@
+{
+  "name": "@hbsa/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SPA del Sistema de Vacaciones del Personal Hospitalario (se completa en el lote de frontend)"
+}

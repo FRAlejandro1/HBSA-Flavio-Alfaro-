@@ -1,0 +1,12 @@
+{
+  // Configuracion de produccion: solo compila src hacia dist
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["tests", "dist", "node_modules"]
+}
