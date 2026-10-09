@@ -21,12 +21,14 @@
     "test:coverage": "vitest run --coverage --passWithNoTests"
   },
   "dependencies": {
+    "argon2": "^0.41.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
+    "jose": "^5.9.6",
     "mysql2": "^3.11.5",
     "winston": "^3.17.0",
     "zod": "^3.25.76"
