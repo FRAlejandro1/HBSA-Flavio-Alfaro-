@@ -1,0 +1,48 @@
+# Integracion continua (base del Sprint 0): instala, revisa el estilo y verifica los tipos.
+# Los jobs de pruebas, SonarCloud, documentacion y Docker se agregan en sprints posteriores.
+name: CI
+
+# Se ejecuta al subir a main o develop y en pull requests hacia esas ramas
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Si llega un commit nuevo a la misma rama, cancela la ejecucion anterior
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Permisos minimos: el flujo solo lee el repositorio
+permissions:
+  contents: read
+
+jobs:
+  calidad:
+    name: Lint y tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Descarga el codigo del repositorio
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      # Instala Node con la version exacta de .nvmrc (20.19.4) y cachea npm
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Instalacion reproducible: falla si package-lock.json no coincide con los package.json
+      - name: Instalar dependencias
+        run: npm ci
+
+      # ESLint en backend y frontend
+      - name: Lint
+        run: npm run lint
+
+      # Verificacion de tipos en backend y frontend
+      - name: Tipos
+        run: npm run typecheck
