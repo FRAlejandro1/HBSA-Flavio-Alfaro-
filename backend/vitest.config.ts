@@ -25,8 +25,8 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
       reportsDirectory: 'coverage',
       include: ['src/**/*.ts'],
-      // El arranque del servidor se cubre con pruebas e2e, no con unitarias
-      exclude: ['src/server.ts'],
+      // El arranque del servidor y los scripts de linea de comandos se cubren con pruebas e2e
+      exclude: ['src/server.ts', 'src/scripts/**'],
     },
   },
 });

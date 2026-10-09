@@ -6,7 +6,9 @@ import type { Express } from 'express';
 import { middlewareCors } from './config/cors';
 import { middlewareHelmet } from './config/helmet';
 import { limitadorGeneral } from './config/rateLimit';
+import { csrf } from './middlewares/csrf';
 import { errorHandler, rutaNoEncontrada } from './middlewares/errorHandler';
+import { crearRouterAuth } from './modules/auth/auth.modulo';
 
 export function crearApp(): Express {
   const app = express();
@@ -19,7 +21,7 @@ export function crearApp(): Express {
   app.use(middlewareCors);
   app.use(limitadorGeneral);
 
-  // Lectura de JSON (con tope de tamano) y de cookies (refresh token)
+  // Lectura de JSON (con tope de tamano) y de cookies (refresh y CSRF)
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
@@ -28,7 +30,11 @@ export function crearApp(): Express {
     res.json({ estado: 'ok' });
   });
 
-  // Aqui se montaran los modulos: /api/auth, /api/usuarios, ...
+  // CSRF en todos los metodos que cambian estado de la API (GET, HEAD y OPTIONS pasan libres)
+  app.use('/api', csrf);
+
+  // Modulos de dominio
+  app.use('/api/auth', crearRouterAuth());
 
   // Siempre al final: 404 y manejo de errores
   app.use(rutaNoEncontrada);
