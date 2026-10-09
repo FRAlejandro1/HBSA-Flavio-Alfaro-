@@ -1,0 +1,42 @@
+# Servicios de desarrollo: MySQL 8.0 y Redis 7.
+# Las claves de aqui son SOLO para desarrollo local; en produccion salen de variables de entorno reales.
+name: hbsa
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-raiz-solo-desarrollo}
+      MYSQL_DATABASE: ${DB_NAME:-hbsa_vacaciones}
+      MYSQL_USER: ${DB_USER:-hbsa_app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-cambia-esta-clave}
+      TZ: America/Guayaquil
+    # utf8mb4 y hora de Ecuador continental para todo el servidor
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci --default-time-zone=-05:00
+    ports:
+      - '3306:3306'
+    volumes:
+      # Datos persistentes entre reinicios
+      - mysql_datos:/var/lib/mysql
+      # Scripts que corren solo la primera vez que se crea el volumen
+      - ./database/docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql_datos:
