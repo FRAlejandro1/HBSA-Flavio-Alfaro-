@@ -8,3 +8,11 @@ export type CodigoRol = (typeof ROLES)[number];
 export function esCodigoRol(valor: string): valor is CodigoRol {
   return (ROLES as readonly string[]).includes(valor);
 }
+
+// Convierte un texto de la base de datos en rol; un valor desconocido indica datos danados y se falla
+export function aCodigoRol(valor: string): CodigoRol {
+  if (!esCodigoRol(valor)) {
+    throw new Error(`Rol desconocido en la base de datos: ${valor}`);
+  }
+  return valor;
+}

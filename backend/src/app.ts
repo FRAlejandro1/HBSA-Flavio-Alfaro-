@@ -10,6 +10,7 @@ import { csrf } from './middlewares/csrf';
 import { errorHandler, rutaNoEncontrada } from './middlewares/errorHandler';
 import { crearRouterAuth } from './modules/auth/auth.modulo';
 import { crearRouterOrganizacion } from './modules/organizacion/organizacion.modulo';
+import { crearRouterUsuarios } from './modules/usuarios/usuarios.modulo';
 
 export function crearApp(): Express {
   const app = express();
@@ -37,6 +38,7 @@ export function crearApp(): Express {
   // Modulos de dominio
   app.use('/api/auth', crearRouterAuth());
   app.use('/api/organizacion', crearRouterOrganizacion());
+  app.use('/api/usuarios', crearRouterUsuarios());
 
   // Siempre al final: 404 y manejo de errores
   app.use(rutaNoEncontrada);

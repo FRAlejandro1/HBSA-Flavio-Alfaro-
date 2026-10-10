@@ -1,11 +1,15 @@
-// Configuracion de Vitest del backend: entorno Node y cobertura v8 con LCOV para SonarCloud
-import { defineConfig } from 'vitest/config';
+// Configuracion de Vitest del backend: entorno Node y cobertura v8 con LCOV para SonarCloud.
+// Aqui corren las pruebas SIN servicios externos (unitarias y de modulos con dobles).
+// Las que necesitan MySQL y Redis reales usan vitest.db.config.ts.
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     environment: 'node',
     // Todas las pruebas viven en tests/{unit,integration,e2e,performance}
     include: ['tests/**/*.test.ts'],
+    // Las pruebas con base de datos real se ejecutan con npm run test:db
+    exclude: [...configDefaults.exclude, 'tests/integration/repositorios/**', 'tests/e2e/**'],
     // Variables minimas para que config/env.ts valide al importarse en las pruebas
     env: {
       CORS_ORIGINS: 'http://localhost:5173',
