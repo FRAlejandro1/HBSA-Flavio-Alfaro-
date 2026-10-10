@@ -23,6 +23,15 @@ npm-debug.log*
 # Archivos generados por la aplicacion (PDFs de solicitudes)
 backend/storage/
 
+# Respaldos de la base de datos: contienen datos personales y nunca se versionan
+respaldos/
+respaldos-ci/
+*.sql.gz
+*.sql.gz.gpg
+
+# Documentacion generada automaticamente (se publica desde el pipeline, no se versiona)
+docs/generada/
+
 # Sistema operativo y editores
 .DS_Store
 Thumbs.db

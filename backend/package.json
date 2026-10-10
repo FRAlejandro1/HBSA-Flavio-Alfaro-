@@ -15,6 +15,7 @@
     "migrar": "tsx src/scripts/migrar.ts",
     "migrar:local": "tsx --env-file=.env src/scripts/migrar.ts",
     "migrar:prod": "node dist/scripts/migrar.js",
+    "docs:generar": "tsx src/scripts/documentacion/index.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",

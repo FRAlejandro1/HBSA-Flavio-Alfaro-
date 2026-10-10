@@ -7,42 +7,55 @@ MySQL 8.0 con InnoDB y `utf8mb4`. Cada empresa del esquema es un hospital. Las r
 ```
 database/
 ├── migrations/   Esquema, en orden numerico. Una migracion aplicada no se edita: se crea otra.
-├── seeds/        Datos iniciales (roles) y datos de demostracion (catalogos de ejemplo).
-├── scripts/      migrar.sh: aplica migraciones pendientes y seeds.
+├── seeds/        Datos iniciales (roles) y de demostracion (archivos con "_demo" en el nombre).
+├── scripts/      migrar.sh (desarrollo con Docker), respaldar.sh, restaurar.sh, migrar-produccion.sh.
 └── docker/init/  Scripts que corren al crear el volumen de MySQL (base de pruebas).
 ```
 
+## Entornos
+
+| Entorno | Base | Quien la crea | Datos |
+|---|---|---|---|
+| Desarrollo | `hbsa_vacaciones` | `npm run migrar:local -w backend -- todo --demo` | Demostracion |
+| Pruebas | `hbsa_vacaciones_test` | Las pruebas la recrean desde cero en cada ejecucion | Solo los de cada prueba |
+| Produccion | La que defina el despliegue | `migrar-produccion.sh` | Solo roles y lo que cargue Talento Humano |
+
+Las pruebas con base de datos real leen variables `TEST_*` y solo borran una base cuyo nombre termina en `_test`.
+
 ## Entorno local
 
-Desde la raiz del repositorio:
-
 ```bash
-# Levanta MySQL 8.0 y Redis 7
 docker compose up -d
-
-# Espera a que ambos esten "healthy"
 docker compose ps
-
-# Aplica migraciones y seeds
-chmod +x database/scripts/migrar.sh
-./database/scripts/migrar.sh todo
+npm run migrar:local -w backend -- todo --demo
 ```
 
-Variables opcionales: `DB_NAME`, `DB_USER`, `DB_PASSWORD` y `MYSQL_ROOT_PASSWORD` (por defecto, valores de desarrollo que coinciden con `backend/.env.example`).
+`migrar` registra cada migracion en `schema_migraciones` y nunca la repite. Sin `--demo` solo carga los datos base.
 
-## Bases
+## Respaldo y restauracion
 
-| Base | Uso |
-|---|---|
-| `hbsa_vacaciones` | Desarrollo |
-| `hbsa_vacaciones_test` | Pruebas de integracion y E2E (se crea al iniciar el volumen) |
+El respaldo contiene datos personales (cedulas, correos): guardalo cifrado (`RESPALDO_GPG_DESTINATARIO`) y fuera del servidor de la base.
 
-## Reiniciar desde cero
+```bash
+bash database/scripts/respaldar.sh
+bash database/scripts/restaurar.sh respaldos/<archivo> hbsa_verificacion
+```
+
+- Restaurar en una base nueva sirve para comprobar que un respaldo funciona. El flujo de CI lo hace en cada cambio.
+- Para recuperar la base real, exporta `CONFIRMAR_SOBRESCRITURA=SI`: la base se borra y se recrea.
+- En desarrollo con Docker, agrega `RESPALDO_VIA_DOCKER=1`.
+- Se conservan 14 dias por defecto (`RETENCION_DIAS`).
+
+## Migrar produccion
+
+Antes de migrar siempre hay respaldo: `migrar-produccion.sh` lo hace primero y se detiene si falla. Requiere el backend compilado (`npm run build -w backend`). Usa `MIGRACION_DB_USER` para el usuario con permisos de DDL; el usuario de la aplicacion no los necesita.
+
+## Reiniciar el entorno local
 
 ```bash
 docker compose down -v
 docker compose up -d
-./database/scripts/migrar.sh todo
+npm run migrar:local -w backend -- todo --demo
 ```
 
 `down -v` borra el volumen: se pierden todos los datos locales.
