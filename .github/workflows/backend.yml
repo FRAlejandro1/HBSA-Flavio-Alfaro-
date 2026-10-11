@@ -1,0 +1,196 @@
+# Flujo reutilizable del backend: estilo y tipos, pruebas unitarias, de integracion y E2E.
+# Lo invoca ci.yml; en Actions sus jobs aparecen agrupados como "Backend / ...".
+# Las pruebas de rendimiento y de seguridad se agregan aqui como jobs aparte.
+name: Backend
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  calidad:
+    name: Lint y tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Instalacion reproducible: falla si package-lock.json no coincide con los package.json
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -w backend
+
+      - name: Tipos
+        run: npm run typecheck -w backend
+
+  # Pruebas sin servicios externos
+  unitarias:
+    name: Unitarias
+    needs: calidad
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # La cobertura queda en backend/coverage/unit/lcov.info
+      - name: Pruebas unitarias con cobertura
+        run: npm run test:unit -w backend -- --coverage --coverage.reportsDirectory=coverage/unit
+
+      - name: Guardar cobertura
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-be-unit
+          path: backend/coverage/unit/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+
+  # Modulos con dobles y repositorios contra MySQL y Redis reales
+  integracion:
+    name: Integracion (MySQL y Redis)
+    needs: calidad
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: raiz-ci
+          MYSQL_DATABASE: hbsa_vacaciones_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -praiz-ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    # Las pruebas leen TEST_*, nunca DB_*. Se usa root porque crea los triggers sin permisos extra.
+    env:
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_PORT: 3306
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: raiz-ci
+      TEST_DB_NAME: hbsa_vacaciones_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/1
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Integracion de modulos con cobertura
+        run: npm run test:integration -w backend -- --coverage --coverage.reportsDirectory=coverage/integracion-modulos
+
+      - name: Integracion de repositorios con MySQL real y cobertura
+        run: npm run test:db:integration -w backend -- --coverage --coverage.reportsDirectory=coverage/integracion-bd
+
+      - name: Guardar cobertura de modulos
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-be-integracion-modulos
+          path: backend/coverage/integracion-modulos/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Guardar cobertura de repositorios
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-be-integracion-bd
+          path: backend/coverage/integracion-bd/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+
+  # Aplicacion completa con MySQL y Redis reales
+  e2e:
+    name: E2E (MySQL y Redis)
+    needs: calidad
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: raiz-ci
+          MYSQL_DATABASE: hbsa_vacaciones_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -praiz-ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_PORT: 3306
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: raiz-ci
+      TEST_DB_NAME: hbsa_vacaciones_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/1
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: E2E con cobertura
+        run: npm run test:e2e -w backend -- --coverage --coverage.reportsDirectory=coverage/e2e
+
+      - name: Guardar cobertura
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-be-e2e
+          path: backend/coverage/e2e/lcov.info
+          if-no-files-found: error
+          retention-days: 7

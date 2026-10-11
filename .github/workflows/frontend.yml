@@ -1,0 +1,64 @@
+# Flujo reutilizable del frontend: estilo y tipos, y pruebas unitarias y de componentes.
+# Lo invoca ci.yml; en Actions sus jobs aparecen agrupados como "Frontend / ...".
+# Las pruebas de accesibilidad y de rendimiento se agregan aqui como jobs aparte.
+name: Frontend
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  calidad:
+    name: Lint y tipos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -w frontend
+
+      - name: Tipos
+        run: npm run typecheck -w frontend
+
+  # Pruebas en jsdom (componentes, hooks y utilidades)
+  unitarias:
+    name: Unitarias
+    needs: calidad
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas unitarias con cobertura
+        run: npm run test:unit -w frontend -- --coverage --coverage.reportsDirectory=coverage/unit
+
+      - name: Guardar cobertura
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-fe-unit
+          path: frontend/coverage/unit/lcov.info
+          if-no-files-found: error
+          retention-days: 7

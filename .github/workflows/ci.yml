@@ -1,5 +1,6 @@
-# Integracion continua (base del Sprint 0): instala, revisa el estilo y verifica los tipos.
-# Los jobs de pruebas, SonarCloud, documentacion y Docker se agregan en sprints posteriores.
+# Integracion continua: orquesta un flujo por area (backend, frontend, base de datos) y, al final,
+# SonarCloud y la documentacion. Cada area vive en su propio archivo y se ve agrupada en Actions.
+# Docker se agrega despues de la documentacion.
 name: CI
 
 # Se ejecuta al subir a main o develop y en pull requests hacia esas ramas
@@ -19,30 +20,139 @@ permissions:
   contents: read
 
 jobs:
-  calidad:
-    name: Lint y tipos
+  # ---------------------------------------------------------------------------
+  # Un flujo por area: cada uno se muestra como un grupo ("Backend / Unitarias", ...)
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend
+    uses: ./.github/workflows/backend.yml
+
+  frontend:
+    name: Frontend
+    uses: ./.github/workflows/frontend.yml
+
+  base-de-datos:
+    name: Base de datos
+    uses: ./.github/workflows/base-de-datos.yml
+
+  # ---------------------------------------------------------------------------
+  # SonarCloud: une las coberturas, analiza y espera el Quality Gate.
+  # Queda apagado hasta que existan las variables SONAR_ORGANIZATION y SONAR_PROJECT_KEY en GitHub.
+  # Solo corre en pull requests del propio repositorio y en main (los secretos no llegan a forks).
+  # ---------------------------------------------------------------------------
+  sonarcloud:
+    name: SonarCloud
+    needs: [backend, frontend, base-de-datos]
+    if: >-
+      vars.SONAR_PROJECT_KEY != '' && (
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      # Descarga el codigo del repositorio
+      # Historial completo: SonarCloud lo necesita para atribuir cambios
       - name: Descargar el codigo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Instala Node con la version exacta de .nvmrc (20.19.4) y cachea npm
+      # Cada job dejo su lcov.info en una carpeta propia: cobertura/cobertura-<job>/lcov.info
+      - name: Descargar las coberturas
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cobertura-*
+          path: cobertura
+
+      # Las rutas del LCOV son relativas a cada paquete; se anteponen para que SonarCloud las ubique desde la raiz
+      - name: Ajustar las rutas de la cobertura
+        run: |
+          for archivo in cobertura/cobertura-be-*/lcov.info; do
+            sed -i -E 's#^SF:src/#SF:backend/src/#' "$archivo"
+          done
+          for archivo in cobertura/cobertura-fe-*/lcov.info; do
+            sed -i -E 's#^SF:src/#SF:frontend/src/#' "$archivo"
+          done
+          ls -1 cobertura/*/lcov.info
+
+      - name: Analisis de SonarCloud
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >-
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.qualitygate.wait=true
+
+  # ---------------------------------------------------------------------------
+  # Documentacion automatica: solo en main, cuando todo lo anterior paso.
+  # SonarCloud puede estar apagado (skipped); si esta encendido debe haber pasado.
+  # Se guarda como archivo descargable y se publica en la rama "documentacion".
+  # ---------------------------------------------------------------------------
+  documentacion:
+    name: Documentacion
+    needs: [backend, frontend, base-de-datos, sonarcloud]
+    if: >-
+      !cancelled()
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && needs.backend.result == 'success'
+      && needs.frontend.result == 'success'
+      && needs.base-de-datos.result == 'success'
+      && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Escribir en la rama de documentacion necesita permiso de escritura, solo en este job
+    permissions:
+      contents: write
+    steps:
+      # Historial completo: el documento de cambios lee los commits
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Preparar Node
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
-      # Instalacion reproducible: falla si package-lock.json no coincide con los package.json
       - name: Instalar dependencias
         run: npm ci
 
-      # ESLint en backend y frontend
-      - name: Lint
-        run: npm run lint
+      - name: Descargar las coberturas
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cobertura-*
+          path: cobertura
 
-      # Verificacion de tipos en backend y frontend
-      - name: Tipos
-        run: npm run typecheck
+      - name: Generar la documentacion
+        run: npm run docs:generar -w backend -- --salida docs/generada --cobertura cobertura
+
+      - name: Guardar la documentacion como archivo descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentacion
+          path: docs/generada
+          if-no-files-found: error
+          retention-days: 30
+
+      # Se publica desde un repositorio temporal limpio: solo contiene la documentacion, sin dependencias ni codigo
+      - name: Publicar en la rama documentacion
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf /tmp/publicacion && mkdir /tmp/publicacion
+          cp -R docs/generada/. /tmp/publicacion/
+          cd /tmp/publicacion
+          git init -q -b documentacion
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "docs: documentacion generada de ${GITHUB_SHA::7}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" documentacion
