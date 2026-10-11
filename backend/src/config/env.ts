@@ -2,6 +2,7 @@
 // Si falta o es invalida alguna, el proceso falla de inmediato con un mensaje claro.
 // Ningun otro archivo lee process.env: todo pasa por el objeto "env" de aqui.
 import { z } from 'zod';
+import { ZONA_HORARIA_POR_DEFECTO, esZonaHorariaValida } from '../shared/utils/zonaHoraria';
 
 // Esquema de todas las variables que usa el backend
 const esquemaEnv = z
@@ -51,6 +52,14 @@ const esquemaEnv = z
 
     // Regla de negocio configurable: dias laborables de vacaciones por periodo
     DIAS_VACACIONES_ANUALES: z.coerce.number().positive().default(30),
+
+    // Zona horaria del hospital: define que dia es "hoy" para las reglas por dias de calendario.
+    // Los instantes se guardan siempre en UTC, sin importar este valor.
+    ZONA_HORARIA_NEGOCIO: z
+      .string()
+      .min(1)
+      .refine(esZonaHorariaValida, 'Zona horaria desconocida (ejemplo: America/Guayaquil)')
+      .default(ZONA_HORARIA_POR_DEFECTO),
   })
   .superRefine((valores, contexto) => {
     // Un secreto comprometido no debe poder firmar el otro tipo de token

@@ -30,6 +30,8 @@ function crearEscenario() {
   const servicio = new UsuariosService({
     repositorio: memoria.repositorio,
     hashear: (clave) => Promise.resolve(`hash:${clave}`),
+    // Fecha fija: la baja sin fecha indicada usa "hoy" y la prueba no depende del reloj
+    hoy: () => '2026-10-09',
   });
   return { servicio, ...memoria };
 }
@@ -193,7 +195,7 @@ describe('actualizar', () => {
 });
 
 describe('baja y reactivacion', () => {
-  it('da de baja con fecha de hoy por defecto y cierra la sesion', async () => {
+  it('da de baja con la fecha de hoy del negocio por defecto y cierra la sesion', async () => {
     const { servicio, sesionesCerradas } = crearEscenario();
     const creada = await servicio.crear(talento, entradaBase);
     const usuario = await servicio.darDeBaja(talento, creada.id, undefined);

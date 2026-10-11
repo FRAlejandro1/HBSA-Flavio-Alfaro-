@@ -11,13 +11,13 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-hbsa_vacaciones}
       MYSQL_USER: ${DB_USER:-hbsa_app}
       MYSQL_PASSWORD: ${DB_PASSWORD:-cambia-esta-clave}
-      TZ: America/Guayaquil
-    # utf8mb4 y hora de Ecuador continental para todo el servidor.
+      TZ: UTC
+    # utf8mb4 y hora UTC en todo el servidor: los instantes se guardan en UTC y se muestran en hora de Ecuador.
     # log-bin-trust-function-creators permite crear triggers (002_triggers.sql) sin ser SUPER.
     command: >-
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_0900_ai_ci
-      --default-time-zone=-05:00
+      --default-time-zone=+00:00
       --log-bin-trust-function-creators=1
     ports:
       - '3306:3306'

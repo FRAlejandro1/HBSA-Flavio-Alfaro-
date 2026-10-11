@@ -97,9 +97,11 @@ function crearBaseDatos(): IBaseDatos {
     database: env.DB_NAME,
     connectionLimit: env.DB_POOL_LIMIT,
     waitForConnections: true,
-    // Hora de Ecuador continental; las fechas se devuelven como texto para evitar desfases
-    timezone: '-05:00',
-    dateStrings: true,
+    // Los instantes (DATETIME y TIMESTAMP) se leen y se escriben en UTC y llegan como Date,
+    // que al convertirse a JSON es un texto ISO con la marca de UTC.
+    timezone: 'Z',
+    // Las fechas de calendario (DATE) no tienen hora: se dejan como texto AAAA-MM-DD, sin conversiones de zona
+    dateStrings: ['DATE'],
   });
   logger.info('Pool de MySQL creado', { host: env.DB_HOST, base: env.DB_NAME });
   return new BaseDatosMySql(pool);

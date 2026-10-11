@@ -56,4 +56,14 @@ describe('cargarEnv', () => {
       /COOKIE_SECURE/,
     );
   });
+
+  it('usa la zona horaria de Ecuador por defecto', () => {
+    expect(cargarEnv(base).ZONA_HORARIA_NEGOCIO).toBe('America/Guayaquil');
+  });
+
+  it('rechaza una zona horaria desconocida', () => {
+    expect(() => cargarEnv({ ...base, ZONA_HORARIA_NEGOCIO: 'Marte/Olimpo' })).toThrow(
+      /ZONA_HORARIA_NEGOCIO/,
+    );
+  });
 });

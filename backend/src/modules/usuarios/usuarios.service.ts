@@ -3,6 +3,7 @@
 import { AppError } from '../../shared/errors/AppError';
 import type { UsuarioAutenticado } from '../../shared/types/autenticacion';
 import type { CodigoRol } from '../../shared/types/roles';
+import { hoyEnZona } from '../../shared/utils/zonaHoraria';
 import { ROLES_ASIGNABLES } from './usuarios.dominio';
 import type { CambiosUsuario, FiltrosUsuarios, PaginaUsuarios, UsuarioDetalle } from './usuarios.dominio';
 import type { IUsuariosRepository } from './usuarios.repository';
@@ -12,10 +13,16 @@ export interface DependenciasUsuariosService {
   repositorio: IUsuariosRepository;
   // Hash de la clave; detras de una funcion para sustituir Argon2 en las pruebas
   hashear: (clave: string) => Promise<string>;
+  // Fecha de hoy (AAAA-MM-DD) en la zona del negocio; por defecto la de Ecuador
+  hoy?: () => string;
 }
 
 export class UsuariosService {
-  constructor(private readonly deps: DependenciasUsuariosService) {}
+  private readonly hoy: () => string;
+
+  constructor(private readonly deps: DependenciasUsuariosService) {
+    this.hoy = deps.hoy ?? (() => hoyEnZona());
+  }
 
   async listar(empresaId: number, filtros: FiltrosUsuarios): Promise<PaginaUsuarios> {
     const { usuarios, total } = await this.deps.repositorio.buscar(empresaId, filtros);
@@ -106,7 +113,8 @@ export class UsuariosService {
       throw AppError.conflicto('La persona ya esta dada de baja');
     }
 
-    await this.deps.repositorio.darDeBaja(actor.empresaId, id, fechaBaja ?? null);
+    // Sin fecha indicada, es el dia de hoy en la zona del hospital (no el de UTC)
+    await this.deps.repositorio.darDeBaja(actor.empresaId, id, fechaBaja ?? this.hoy());
     return this.obtener(actor.empresaId, id);
   }
 
