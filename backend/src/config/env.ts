@@ -11,6 +11,11 @@ const esquemaEnv = z
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug']).default('info'),
 
+    // Cuantos servidores intermedios (como nginx) hay entre el usuario y la API.
+    // Con 1, Express toma la IP real de la cabecera X-Forwarded-For que agrega el servidor web.
+    // Con 0 (por defecto) ignora esa cabecera, que de otro modo cualquiera podria falsificar.
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+
     // Lista de origenes permitidos por CORS, separados por comas
     CORS_ORIGINS: z
       .string()

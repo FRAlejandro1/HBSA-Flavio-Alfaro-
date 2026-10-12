@@ -66,4 +66,14 @@ describe('cargarEnv', () => {
       /ZONA_HORARIA_NEGOCIO/,
     );
   });
+
+  it('no confia en servidores intermedios por defecto', () => {
+    expect(cargarEnv(base).TRUST_PROXY).toBe(0);
+  });
+
+  it('acepta TRUST_PROXY=1 y rechaza valores fuera de rango', () => {
+    expect(cargarEnv({ ...base, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);
+    expect(() => cargarEnv({ ...base, TRUST_PROXY: '10' })).toThrow(/TRUST_PROXY/);
+    expect(() => cargarEnv({ ...base, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
+  });
 });

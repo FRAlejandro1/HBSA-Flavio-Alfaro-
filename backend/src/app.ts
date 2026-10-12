@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import type { Express } from 'express';
 import { middlewareCors } from './config/cors';
+import { env } from './config/env';
 import { middlewareHelmet } from './config/helmet';
 import { limitadorGeneral } from './config/rateLimit';
 import { csrf } from './middlewares/csrf';
@@ -17,6 +18,9 @@ export function crearApp(): Express {
 
   // No anunciar que el servidor usa Express
   app.disable('x-powered-by');
+
+  // Detras de nginx, la IP del usuario llega en X-Forwarded-For; con 0 esa cabecera se ignora
+  app.set('trust proxy', env.TRUST_PROXY);
 
   // Cabeceras de seguridad, CORS y limite general de peticiones
   app.use(middlewareHelmet);
