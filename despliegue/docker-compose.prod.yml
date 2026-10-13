@@ -113,8 +113,11 @@ services:
       - '${PUERTO_HTTP:-80}:8080'
       - '${PUERTO_HTTPS:-443}:8443'
     volumes:
-      # Certificados creados por crear-certificados.sh
-      - ./certs:/etc/nginx/certs:ro
+      # Solo los dos archivos que nginx necesita, creados por crear-certificados.sh.
+      # No se monta la carpeta completa: tiene permisos restringidos que nginx (sin privilegios) no puede
+      # atravesar, y asi la clave de la autoridad certificadora (ca.key) nunca entra al contenedor.
+      - ./certs/servidor.crt:/etc/nginx/certs/servidor.crt:ro
+      - ./certs/servidor.key:/etc/nginx/certs/servidor.key:ro
 
 volumes:
   mysql_datos:

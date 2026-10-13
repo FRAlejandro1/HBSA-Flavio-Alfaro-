@@ -27,6 +27,13 @@ set +a
 
 COMPOSE=(docker compose -f docker-compose.prod.yml)
 
+# Si algo no arranca, muestra el estado y los ultimos registros de los servicios para saber por que
+diagnosticar() {
+  echo "Algo no arranco. Estado y ultimos registros de los servicios:" >&2
+  "${COMPOSE[@]}" ps -a >&2 || true
+  "${COMPOSE[@]}" logs --no-color --tail=40 >&2 || true
+}
+
 case "$MODO" in
   construir) "${COMPOSE[@]}" build ;;
   descargar) "${COMPOSE[@]}" pull backend frontend ;;
@@ -38,7 +45,7 @@ case "$MODO" in
 esac
 
 echo "1/5 Base de datos y Redis"
-"${COMPOSE[@]}" up -d --wait mysql redis
+"${COMPOSE[@]}" up -d --wait mysql redis || { diagnosticar; exit 1; }
 
 echo "2/5 Respaldo previo"
 tablas="$("${COMPOSE[@]}" exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mysql -uroot -N \
@@ -53,11 +60,11 @@ else
 fi
 
 echo "3/5 Migraciones y datos base"
-"${COMPOSE[@]}" run --rm migracion
-"${COMPOSE[@]}" run --rm migracion node dist/scripts/migrar.js seeds
+"${COMPOSE[@]}" run --rm migracion || { diagnosticar; exit 1; }
+"${COMPOSE[@]}" run --rm migracion node dist/scripts/migrar.js seeds || { diagnosticar; exit 1; }
 
 echo "4/5 Aplicacion"
-"${COMPOSE[@]}" up -d --wait backend frontend
+"${COMPOSE[@]}" up -d --wait backend frontend || { diagnosticar; exit 1; }
 
 echo "5/5 Verificacion"
 curl -ksf "https://localhost:${PUERTO_HTTPS:-443}/salud" > /dev/null
