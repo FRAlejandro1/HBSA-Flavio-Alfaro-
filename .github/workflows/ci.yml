@@ -35,23 +35,23 @@ jobs:
     uses: ./.github/workflows/base-de-datos.yml
 
   # ---------------------------------------------------------------------------
-  # SonarCloud: une las coberturas, analiza y espera el Quality Gate.
-  # Queda apagado hasta que existan las variables SONAR_ORGANIZATION y SONAR_PROJECT_KEY en GitHub.
-  # Solo corre en pull requests del propio repositorio y en main (los secretos no llegan a forks).
+  # SonarCloud: une las coberturas y analiza la rama principal.
+  # Solo corre al subir a main: el plan gratuito muestra el analisis de la rama principal, no el de los pull requests.
+  # Queda apagado hasta que exista la variable SONAR_PROJECT_KEY en GitHub.
+  # La variable SONAR_ESPERAR_GATE controla si el Quality Gate bloquea lo que sigue (documentacion y contenedores):
+  # con el valor "false" el analisis se sube y se puede revisar en SonarCloud sin bloquear nada; sin definir, bloquea.
   # ---------------------------------------------------------------------------
   sonarcloud:
     name: SonarCloud
     needs: [backend, frontend, base-de-datos]
     if: >-
-      vars.SONAR_PROJECT_KEY != '' && (
-        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-        || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      )
+      vars.SONAR_PROJECT_KEY != ''
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: read
     steps:
       # Historial completo: SonarCloud lo necesita para atribuir cambios
       - name: Descargar el codigo
@@ -106,7 +106,7 @@ jobs:
           args: >-
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.wait=${{ vars.SONAR_ESPERAR_GATE == 'false' && 'false' || 'true' }}
 
   # ---------------------------------------------------------------------------
   # Documentacion automatica: solo en main, cuando todo lo anterior paso.
