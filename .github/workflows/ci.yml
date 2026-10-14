@@ -53,13 +53,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      # Historial completo: SonarCloud lo necesita para atribuir cambios
       - name: Descargar el codigo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Falla enseguida y con un mensaje claro si falta algo, en lugar de dejar que el escaner responda "Not authorized"
       - name: Comprobar la configuracion de SonarCloud
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -80,14 +78,12 @@ jobs:
           fi
           echo "Token presente (${#SONAR_TOKEN} caracteres). Organizacion: $SONAR_ORGANIZATION. Proyecto: $SONAR_PROJECT_KEY"
 
-      # Cada job dejo su lcov.info en una carpeta propia: cobertura/cobertura-<job>/lcov.info
       - name: Descargar las coberturas
         uses: actions/download-artifact@v4
         with:
           pattern: cobertura-*
           path: cobertura
 
-      # Las rutas del LCOV son relativas a cada paquete; se anteponen para que SonarCloud las ubique desde la raiz
       - name: Ajustar las rutas de la cobertura
         run: |
           for archivo in cobertura/cobertura-be-*/lcov.info; do
