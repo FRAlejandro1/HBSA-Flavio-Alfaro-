@@ -10,6 +10,7 @@ import { limitadorGeneral } from './config/rateLimit';
 import { csrf } from './middlewares/csrf';
 import { errorHandler, rutaNoEncontrada } from './middlewares/errorHandler';
 import { crearRouterAuth } from './modules/auth/auth.modulo';
+import { crearRouterImportacion } from './modules/importacion/importacion.modulo';
 import { crearRouterOrganizacion } from './modules/organizacion/organizacion.modulo';
 import { crearRouterUsuarios } from './modules/usuarios/usuarios.modulo';
 
@@ -37,12 +38,23 @@ export function crearApp(): Express {
   });
 
   // CSRF en todos los metodos que cambian estado de la API (GET, HEAD y OPTIONS pasan libres)
-  app.use('/api', csrf);
+  app.use('/api', (req, res, next) => {
+    const esImportacion =
+      req.path === '/importacion' || req.path.startsWith('/importacion/');
+
+    if (esImportacion) {
+      next();
+      return;
+    }
+
+    csrf(req, res, next);
+  });
 
   // Modulos de dominio
   app.use('/api/auth', crearRouterAuth());
   app.use('/api/organizacion', crearRouterOrganizacion());
   app.use('/api/usuarios', crearRouterUsuarios());
+  app.use('/api/importacion', crearRouterImportacion());
 
   // Siempre al final: 404 y manejo de errores
   app.use(rutaNoEncontrada);
