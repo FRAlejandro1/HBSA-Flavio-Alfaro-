@@ -50,7 +50,7 @@ describe('catalogos y personas', () => {
     expect(await repositorio.listarCargos(IDS.empresaA)).toHaveLength(2);
     const usuarios = await repositorio.listarUsuarios(IDS.empresaA);
     expect(usuarios).toHaveLength(2);
-    expect(usuarios.find((u) => u.id === id)).toMatchObject({ jefeCedula: '0100000001', rol: 'EMPLEADO', estado: 'ACTIVO' });
+    expect(usuarios.find((u) => u.id === id)).toMatchObject({ apellidos: 'Persona', jefeCedula: '0100000001', rol: 'EMPLEADO', estado: 'ACTIVO' });
   });
 });
 
