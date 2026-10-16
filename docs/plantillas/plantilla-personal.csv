@@ -1,0 +1,3 @@
+Cédula,Nombres,Apellidos,Correo,Teléfono,Área,Cargo,Cédula del jefe inmediato,Fecha de ingreso,Rol,Fecha de baja
+0102030405,Ana María,Pérez Mena,ana.perez@hospital.test,0991234567,Emergencia,Médico,,2020-03-01,Jefe de área,
+0102030406,Luis,Gómez Soto,,0987654321,Emergencia,Enfermera,0102030405,15/06/2021,Empleado,

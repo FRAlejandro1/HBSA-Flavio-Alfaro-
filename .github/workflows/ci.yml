@@ -1,0 +1,257 @@
+# Integracion continua: orquesta un flujo por area (backend, frontend, base de datos) y, al final,
+# SonarCloud, la documentacion y los contenedores. Cada area vive en su propio archivo y se ve agrupada en Actions.
+name: CI
+
+# Se ejecuta al subir a main o develop y en pull requests hacia esas ramas
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Si llega un commit nuevo a la misma rama, cancela la ejecucion anterior
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Permisos minimos: el flujo solo lee el repositorio
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Un flujo por area: cada uno se muestra como un grupo ("Backend / Unitarias", ...)
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend
+    uses: ./.github/workflows/backend.yml
+
+  frontend:
+    name: Frontend
+    uses: ./.github/workflows/frontend.yml
+
+  base-de-datos:
+    name: Base de datos
+    uses: ./.github/workflows/base-de-datos.yml
+
+  # ---------------------------------------------------------------------------
+  # SonarCloud: une las coberturas y analiza la rama principal.
+  # Solo corre al subir a main: el plan gratuito muestra el analisis de la rama principal, no el de los pull requests.
+  # Queda apagado hasta que exista la variable SONAR_PROJECT_KEY en GitHub.
+  # La variable SONAR_ESPERAR_GATE controla si el Quality Gate bloquea lo que sigue (documentacion y contenedores):
+  # con el valor "false" el analisis se sube y se puede revisar en SonarCloud sin bloquear nada; sin definir, bloquea.
+  # ---------------------------------------------------------------------------
+  sonarcloud:
+    name: SonarCloud
+    needs: [backend, frontend, base-de-datos]
+    if: >-
+      vars.SONAR_PROJECT_KEY != ''
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comprobar la configuracion de SonarCloud
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::El secreto SONAR_TOKEN esta vacio o no existe. Debe estar en Settings, Secrets and variables, Actions, pestana Secrets (no en Codespaces ni en Dependabot)."
+            exit 1
+          fi
+          if [[ ! "$SONAR_ORGANIZATION" =~ ^[a-z0-9_-]+$ ]]; then
+            echo "::error::La variable SONAR_ORGANIZATION debe ser la clave de la organizacion en minusculas (por ejemplo anthonym), no su nombre."
+            exit 1
+          fi
+          if [[ ! "$SONAR_PROJECT_KEY" =~ ^[A-Za-z0-9_.:-]+$ ]]; then
+            echo "::error::La variable SONAR_PROJECT_KEY no es una clave valida: solo admite letras, numeros, guion, guion bajo, punto y dos puntos (sin barras). Copiala de Information en SonarCloud."
+            exit 1
+          fi
+          echo "Token presente (${#SONAR_TOKEN} caracteres). Organizacion: $SONAR_ORGANIZATION. Proyecto: $SONAR_PROJECT_KEY"
+
+      - name: Descargar las coberturas
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cobertura-*
+          path: cobertura
+
+      - name: Ajustar las rutas de la cobertura
+        run: |
+          for archivo in cobertura/cobertura-be-*/lcov.info; do
+            sed -i -E 's#^SF:src/#SF:backend/src/#' "$archivo"
+          done
+          for archivo in cobertura/cobertura-fe-*/lcov.info; do
+            sed -i -E 's#^SF:src/#SF:frontend/src/#' "$archivo"
+          done
+          ls -1 cobertura/*/lcov.info
+
+      - name: Analisis de SonarCloud
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >-
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.qualitygate.wait=${{ vars.SONAR_ESPERAR_GATE == 'false' && 'false' || 'true' }}
+
+  # ---------------------------------------------------------------------------
+  # Documentacion automatica: solo en main, cuando todo lo anterior paso.
+  # SonarCloud puede estar apagado (skipped); si esta encendido debe haber pasado.
+  # Se guarda como archivo descargable y se publica en la rama "documentacion".
+  # ---------------------------------------------------------------------------
+  documentacion:
+    name: Documentacion
+    needs: [backend, frontend, base-de-datos, sonarcloud]
+    if: >-
+      !cancelled()
+      && github.event_name == 'push'
+      && github.ref == 'refs/heads/main'
+      && needs.backend.result == 'success'
+      && needs.frontend.result == 'success'
+      && needs.base-de-datos.result == 'success'
+      && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Escribir en la rama de documentacion necesita permiso de escritura, solo en este job
+    permissions:
+      contents: write
+    steps:
+      # Historial completo: el documento de cambios lee los commits
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Descargar las coberturas
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cobertura-*
+          path: cobertura
+
+      - name: Generar la documentacion
+        run: npm run docs:generar -w backend -- --salida docs/generada --cobertura cobertura
+
+      - name: Guardar la documentacion como archivo descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentacion
+          path: docs/generada
+          if-no-files-found: error
+          retention-days: 30
+
+      # Se publica desde un repositorio temporal limpio: solo contiene la documentacion, sin dependencias ni codigo
+      - name: Publicar en la rama documentacion
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf /tmp/publicacion && mkdir /tmp/publicacion
+          cp -R docs/generada/. /tmp/publicacion/
+          cd /tmp/publicacion
+          git init -q -b documentacion
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "docs: documentacion generada de ${GITHUB_SHA::7}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" documentacion
+
+  # ---------------------------------------------------------------------------
+  # Contenedores: construye las imagenes, las despliega con los mismos scripts del servidor y comprueba que
+  # la aplicacion responde. Corre en pull requests y en pushes; solo en main publica las imagenes.
+  # ---------------------------------------------------------------------------
+  contenedores:
+    name: Contenedores
+    needs: [backend, frontend, base-de-datos, sonarcloud, documentacion]
+    if: >-
+      !cancelled()
+      && needs.backend.result == 'success'
+      && needs.frontend.result == 'success'
+      && needs.base-de-datos.result == 'success'
+      && (needs.sonarcloud.result == 'success' || needs.sonarcloud.result == 'skipped')
+      && (needs.documentacion.result == 'success' || needs.documentacion.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Subir imagenes al registro de GitHub necesita permiso de escritura en paquetes, solo en este job
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Etiquetas locales y puertos libres para la prueba; desplegar.sh y el compose los leen
+      BACKEND_IMAGE: hbsa-backend:ci
+      FRONTEND_IMAGE: hbsa-frontend:ci
+      PUERTO_HTTP: 8080
+      PUERTO_HTTPS: 8443
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Construir la imagen del backend
+        run: docker build -f backend/Dockerfile -t "$BACKEND_IMAGE" .
+
+      - name: Construir la imagen del frontend
+        run: docker build -f frontend/Dockerfile -t "$FRONTEND_IMAGE" .
+
+      # Mismo procedimiento que en el servidor: claves aleatorias y certificados propios para "localhost"
+      - name: Preparar el entorno de prueba
+        run: bash despliegue/scripts/preparar.sh localhost
+
+      - name: Desplegar con el script del servidor
+        run: bash despliegue/scripts/desplegar.sh local
+
+      - name: Verificar la aplicacion
+        run: |
+          curl -ksf https://localhost:8443/ | grep -q 'id="root"'
+          curl -ksf https://localhost:8443/api/auth/csrf | grep -q csrfToken
+          curl -ksf https://localhost:8443/salud | grep -q ok
+          curl -sI http://localhost:8080/ | grep -qi '^location: https://'
+          curl -ksI https://localhost:8443/ | grep -qi '^content-security-policy'
+
+      # El usuario de la aplicacion no debe poder cambiar la estructura de la base
+      - name: Comprobar los permisos del usuario de la aplicacion
+        run: |
+          set -a
+          . despliegue/.env
+          set +a
+          if docker compose -f despliegue/docker-compose.prod.yml exec -T -e MYSQL_PWD="$DB_PASSWORD" \
+            mysql mysql -u"$DB_USER" "$DB_NAME" -e "CREATE TABLE prueba_ddl (id INT)" 2> /dev/null; then
+            echo "El usuario de la aplicacion pudo crear una tabla"
+            exit 1
+          fi
+
+      - name: Registros de los contenedores (si algo fallo)
+        if: failure()
+        run: docker compose -f despliegue/docker-compose.prod.yml logs --no-color --tail=80
+
+      # Solo desde main: las imagenes quedan en el registro de GitHub con la etiqueta del commit y latest
+      - name: Publicar las imagenes
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          propietario="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for servicio in backend frontend; do
+            imagen="ghcr.io/${propietario}/hbsa-${servicio}"
+            docker tag "hbsa-${servicio}:ci" "${imagen}:sha-${GITHUB_SHA::7}"
+            docker tag "hbsa-${servicio}:ci" "${imagen}:latest"
+            docker push "${imagen}:sha-${GITHUB_SHA::7}"
+            docker push "${imagen}:latest"
+          done

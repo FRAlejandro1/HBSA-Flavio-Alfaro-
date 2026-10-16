@@ -1,0 +1,120 @@
+# Flujo reutilizable de la base de datos: las migraciones desde cero y el respaldo con su restauracion.
+# Lo invoca ci.yml; en Actions sus jobs aparecen agrupados como "Base de datos / ...".
+name: Base de datos
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # Una base vacia debe llegar al esquema completo, y repetir la migracion no debe aplicar nada
+  migraciones:
+    name: Migraciones desde cero
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: raiz-ci
+          MYSQL_DATABASE: hbsa_vacaciones
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -praiz-ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: hbsa_vacaciones
+      DB_USER: root
+      DB_PASSWORD: raiz-ci
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Migrar una base vacia
+        run: npm run migrar -w backend -- todo --demo
+
+      # La segunda ejecucion debe informar que no habia nada pendiente
+      - name: Repetir la migracion
+        run: |
+          salida="$(npm run migrar -w backend -- todo --demo 2>&1)"
+          echo "$salida"
+          echo "$salida" | grep -q "Migraciones aplicadas: ninguna"
+
+  # Comprueba que el procedimiento de respaldo funciona de punta a punta
+  respaldo:
+    name: Respaldo y restauracion
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: raiz-ci
+          MYSQL_DATABASE: hbsa_vacaciones
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -praiz-ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: hbsa_vacaciones
+      DB_USER: root
+      DB_PASSWORD: raiz-ci
+      RESPALDO_DIR: respaldos-ci
+      # Los comandos mysql de los pasos leen la clave de aqui
+      MYSQL_PWD: raiz-ci
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Esquema completo, con triggers y datos de demostracion
+      - name: Migrar la base de origen
+        run: npm run migrar -w backend -- todo --demo
+
+      - name: Crear el respaldo
+        run: bash database/scripts/respaldar.sh
+
+      # Se restaura en otra base y se compara con la original
+      - name: Restaurar en una base de verificacion y comparar
+        run: |
+          bash database/scripts/restaurar.sh ultimo hbsa_verificacion
+
+          contar_tablas() {
+            mysql -h127.0.0.1 -uroot -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$1'"
+          }
+          tablas_origen="$(contar_tablas hbsa_vacaciones)"
+          tablas_copia="$(contar_tablas hbsa_verificacion)"
+          triggers_copia="$(mysql -h127.0.0.1 -uroot -N -e "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = 'hbsa_verificacion'")"
+
+          echo "Tablas: origen=$tablas_origen copia=$tablas_copia, triggers en la copia=$triggers_copia"
+          test "$tablas_origen" = "$tablas_copia"
+          test "$triggers_copia" = "2"

@@ -1,0 +1,83 @@
+/* Estilos globales: capas de Tailwind y tokens de los tres temas.
+   Los colores se escriben como "R G B" para que Tailwind pueda aplicar transparencias.
+   Los valores iniciales se auditan con herramientas de contraste en el Sprint 5. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tema claro (por defecto) */
+:root {
+  /* Escala del texto: 1 es 100 %; useTema la cambiara desde la interfaz */
+  --escala-texto: 1;
+  --color-fondo: 248 250 252;
+  --color-superficie: 255 255 255;
+  --color-texto: 15 23 42;
+  --color-texto-suave: 71 85 105;
+  --color-borde: 203 213 225;
+  --color-primario: 29 78 216;
+  --color-primario-texto: 255 255 255;
+  --color-error: 185 28 28;
+  --color-exito: 21 128 61;
+  --color-aviso: 180 83 9;
+  --color-foco: 29 78 216;
+  color-scheme: light;
+}
+
+/* Tema oscuro */
+:root[data-tema='oscuro'] {
+  --color-fondo: 15 23 42;
+  --color-superficie: 30 41 59;
+  --color-texto: 241 245 249;
+  --color-texto-suave: 148 163 184;
+  --color-borde: 71 85 105;
+  --color-primario: 96 165 250;
+  --color-primario-texto: 15 23 42;
+  --color-error: 248 113 113;
+  --color-exito: 74 222 128;
+  --color-aviso: 251 191 36;
+  --color-foco: 147 197 253;
+  color-scheme: dark;
+}
+
+/* Alto contraste: fondo negro, texto blanco y acentos saturados */
+:root[data-tema='alto-contraste'] {
+  --color-fondo: 0 0 0;
+  --color-superficie: 0 0 0;
+  --color-texto: 255 255 255;
+  --color-texto-suave: 255 255 255;
+  --color-borde: 255 255 255;
+  --color-primario: 255 255 0;
+  --color-primario-texto: 0 0 0;
+  --color-error: 255 107 107;
+  --color-exito: 0 255 0;
+  --color-aviso: 255 255 0;
+  --color-foco: 0 255 255;
+  color-scheme: dark;
+}
+
+@layer base {
+  /* Todo el tamano de texto escala con la variable, porque Tailwind usa rem */
+  html {
+    font-size: calc(100% * var(--escala-texto));
+  }
+
+  body {
+    @apply bg-fondo text-texto antialiased;
+  }
+
+  /* Foco visible en cualquier elemento interactivo */
+  :focus-visible {
+    outline: 2px solid rgb(var(--color-foco));
+    outline-offset: 2px;
+  }
+}
+
+/* Respeta a quien pide menos animacion en su sistema */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

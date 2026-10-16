@@ -1,0 +1,39 @@
+# Dependencias instaladas
+node_modules/
+
+# Salida de compilacion y cache de herramientas
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Cobertura y reportes de pruebas (el LCOV se genera en CI)
+coverage/
+
+# Variables de entorno reales (solo se versiona .env.example)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Archivos generados por la aplicacion (PDFs de solicitudes)
+backend/storage/
+
+# Respaldos de la base de datos: contienen datos personales y nunca se versionan
+respaldos/
+respaldos-ci/
+*.sql.gz
+*.sql.gz.gpg
+
+# Documentacion generada automaticamente (se publica desde el pipeline, no se versiona)
+docs/generada/
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

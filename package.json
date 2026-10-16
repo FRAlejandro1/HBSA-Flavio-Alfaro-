@@ -1,0 +1,28 @@
+{
+  "name": "hbsa-flavio-alfaro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sistema de Vacaciones del Personal Hospitalario (monorepo)",
+  "engines": {
+    "node": "20.19.4",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "prepare": "husky",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:unit": "npm run test:unit --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.10"
+  }
+}

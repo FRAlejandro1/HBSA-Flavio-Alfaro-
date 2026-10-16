@@ -1,0 +1,125 @@
+# Produccion en el servidor del hospital: MySQL, Redis, backend y nginx con HTTPS.
+# Solo nginx publica puertos; MySQL, Redis y el backend quedan en la red interna de Docker.
+# Se usa con los scripts de despliegue/scripts (preparar.sh y desplegar.sh), que leen despliegue/.env.
+name: hbsa-prod
+
+# Configuracion comun del backend y del comando de migracion
+x-backend: &backend
+  image: ${BACKEND_IMAGE:-hbsa-backend:local}
+  build:
+    context: ..
+    dockerfile: backend/Dockerfile
+  environment: &backend-entorno
+    NODE_ENV: production
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Hay un nginx entre el usuario y la API
+    TRUST_PROXY: '1'
+    COOKIE_SECURE: 'true'
+    CORS_ORIGINS: ${CORS_ORIGINS}
+    DB_HOST: mysql
+    DB_PORT: '3306'
+    DB_NAME: ${DB_NAME}
+    DB_USER: ${DB_USER}
+    DB_PASSWORD: ${DB_PASSWORD}
+    REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+    JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+    JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+    JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+    JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+    RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+    RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+    RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-10}
+    DIAS_VACACIONES_ANUALES: ${DIAS_VACACIONES_ANUALES:-30}
+    ZONA_HORARIA_NEGOCIO: ${ZONA_HORARIA_NEGOCIO:-America/Guayaquil}
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: UTC
+    # utf8mb4 y UTC en todo el servidor: los instantes se guardan en UTC y se muestran en hora de Ecuador.
+    # log-bin-trust-function-creators permite crear los triggers de la migracion.
+    command: >-
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_0900_ai_ci
+      --default-time-zone=+00:00
+      --log-bin-trust-function-creators=1
+    volumes:
+      - mysql_datos:/var/lib/mysql
+      # Al crear la base, quita al usuario de la aplicacion los permisos de cambiar la estructura
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD}']
+    environment:
+      # redis-cli usa esta variable para autenticarse
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis_datos:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - pdf_datos:/app/backend/storage
+
+  # Comando de una sola ejecucion: docker compose run --rm migracion
+  migracion:
+    <<: *backend
+    profiles: ['migracion']
+    command: ['node', 'dist/scripts/migrar.js', 'migraciones']
+    environment:
+      <<: *backend-entorno
+      # La estructura de la base la cambia root; el usuario de la aplicacion solo lee y escribe datos
+      MIGRACION_DB_USER: root
+      MIGRACION_DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-hbsa-frontend:local}
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '${PUERTO_HTTP:-80}:8080'
+      - '${PUERTO_HTTPS:-443}:8443'
+    volumes:
+      # Solo los dos archivos que nginx necesita, creados por crear-certificados.sh.
+      # No se monta la carpeta completa: tiene permisos restringidos que nginx (sin privilegios) no puede
+      # atravesar, y asi la clave de la autoridad certificadora (ca.key) nunca entra al contenedor.
+      - ./certs/servidor.crt:/etc/nginx/certs/servidor.crt:ro
+      - ./certs/servidor.key:/etc/nginx/certs/servidor.key:ro
+
+volumes:
+  mysql_datos:
+  redis_datos:
+  pdf_datos:

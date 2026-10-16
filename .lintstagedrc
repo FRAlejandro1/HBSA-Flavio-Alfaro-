@@ -1,0 +1,4 @@
+{
+  "backend/**/*.{ts,js}": "npm exec --workspace=backend -- eslint --fix",
+  "frontend/**/*.{ts,tsx,js,jsx}": "npm exec --workspace=frontend -- eslint --fix"
+}

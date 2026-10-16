@@ -1,0 +1,19 @@
+# Lo que no entra al contexto de construccion de las imagenes (se construyen desde la raiz del repositorio)
+.git
+.github
+.husky
+.vscode
+.idea
+docs
+despliegue
+respaldos
+respaldos-ci
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+*.sql.gz
+*.sql.gz.gpg
