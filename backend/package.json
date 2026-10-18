@@ -22,7 +22,7 @@
     "test:unit": "vitest run tests/unit --passWithNoTests",
     "test:integration": "vitest run tests/integration --passWithNoTests",
     "test:db": "vitest run -c vitest.db.config.ts",
-    "test:db:integration": "vitest run -c vitest.db.config.ts tests/integration/repositorios",
+    "test:db:integration": "vitest run -c vitest.db.config.ts tests/integration/repositorios tests/integration/vacaciones.integracion.test.ts",
     "test:e2e": "vitest run -c vitest.db.config.ts tests/e2e",
     "test:performance": "vitest run tests/performance --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests"
