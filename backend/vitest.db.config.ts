@@ -7,7 +7,7 @@ import { variablesApp } from './tests/setup/entornoDb';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/integration/repositorios/**/*.test.ts', 'tests/e2e/**/*.test.ts'],
+    include: ['tests/integration/repositorios/**/*.test.ts', 'tests/integration/vacaciones.integracion.test.ts', 'tests/e2e/**/*.test.ts'],
     exclude: configDefaults.exclude,
     globalSetup: ['./tests/setup/globalSetupDb.ts'],
     // Variables que ve config/env.ts: apuntan a la base y a Redis de pruebas
