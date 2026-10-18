@@ -12,6 +12,9 @@ describe('esquemaCrearArea', () => {
     expect(esquemaCrearArea.parse({ detalle: '  Emergencia ' })).toEqual({
       detalle: 'Emergencia',
       jefeId: null,
+      parentId: null,
+      procesoId: null,
+
     });
   });
 

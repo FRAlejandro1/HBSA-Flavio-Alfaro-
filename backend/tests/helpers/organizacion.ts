@@ -1,5 +1,5 @@
 // Repositorio de organizacion en memoria, para probar sin MySQL. Reproduce las reglas de la base:
-// nombres unicos por hospital y registros en uso que no se pueden eliminar.
+// nombres unicos por hospital y registros en uso (o con subareas) que no se pueden eliminar.
 import type {
   Area,
   Cargo,
@@ -7,9 +7,18 @@ import type {
   CambiosCargo,
   DatosArea,
   DatosCargo,
+  Proceso,
 } from '../../src/modules/organizacion/organizacion.dominio';
 import type { IOrganizacionRepository } from '../../src/modules/organizacion/organizacion.repository';
 import { AppError } from '../../src/shared/errors/AppError';
+
+// Los cuatro procesos del MSP, con los mismos ids con los que los crea la migracion 006
+export const PROCESOS_PRUEBA: Proceso[] = [
+  { id: 1, codigo: 'GOBERNANTE', detalle: 'Proceso gobernante' },
+  { id: 2, codigo: 'AGREGADOR_VALOR', detalle: 'Procesos agregadores de valor' },
+  { id: 3, codigo: 'HABILITANTE_ASESORIA', detalle: 'Procesos habilitantes de asesoria' },
+  { id: 4, codigo: 'HABILITANTE_APOYO', detalle: 'Procesos habilitantes de apoyo' },
+];
 
 interface AreaGuardada {
   empresaId: number;
@@ -39,6 +48,8 @@ export function crearOrganizacionEnMemoria(): {
   const cargosEnUso = new Set<number>();
 
   const repositorio: IOrganizacionRepository = {
+    listarProcesos: () => Promise.resolve(PROCESOS_PRUEBA),
+
     listarAreas: (empresaId) =>
       Promise.resolve(
         areas
@@ -59,7 +70,16 @@ export function crearOrganizacionEnMemoria(): {
         datos.jefeId === null
           ? null
           : { id: datos.jefeId, nombres: 'Jefe', apellidos: 'De prueba' };
-      areas.push({ empresaId, area: { id: siguienteId, detalle: datos.detalle, jefe } });
+      areas.push({
+        empresaId,
+        area: {
+          id: siguienteId,
+          detalle: datos.detalle,
+          jefe,
+          parentId: datos.parentId,
+          procesoId: datos.procesoId,
+        },
+      });
       return Promise.resolve(siguienteId);
     },
 
@@ -75,6 +95,9 @@ export function crearOrganizacionEnMemoria(): {
               ? null
               : { id: cambios.jefeId, nombres: 'Jefe', apellidos: 'De prueba' };
         }
+        if (cambios.parentId !== undefined) {
+          guardada.area.parentId = cambios.parentId;
+        }
       }
       return Promise.resolve();
     },
@@ -86,6 +109,10 @@ export function crearOrganizacionEnMemoria(): {
       }
       if (areasEnUso.has(id)) {
         return rechazar(AppError.conflicto('El area esta en uso'));
+      }
+      // Igual que la clave foranea de la base: un area con subareas no se elimina
+      if (areas.some((a) => a.empresaId === empresaId && a.area.parentId === id)) {
+        return rechazar(AppError.conflicto('El area tiene subareas'));
       }
       areas.splice(indice, 1);
       return Promise.resolve(true);
