@@ -2,10 +2,10 @@
 # SonarCloud, la documentacion y los contenedores. Cada area vive en su propio archivo y se ve agrupada en Actions.
 name: CI
 
-# Se ejecuta al subir a main o develop y en pull requests hacia esas ramas
+# Se ejecuta al subir a main, develop o test/sonarcloud-main; los PR se validan hacia main o develop
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, test/sonarcloud-main]
   pull_request:
     branches: [main, develop]
 

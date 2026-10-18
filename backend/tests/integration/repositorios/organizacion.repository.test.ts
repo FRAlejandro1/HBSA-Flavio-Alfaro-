@@ -6,8 +6,19 @@ import { IDS, insertarUsuario, resetearDatos } from '../../helpers/baseDatos';
 
 const repositorio = new OrganizacionRepository(obtenerBaseDatos());
 
+// Proceso institucional de las areas de prueba: el catalogo lo carga la migracion 006 (2 es AGREGADOR_VALOR)
+const PROCESO = 2;
+
+// Datos de un area principal (sin area padre) dentro del proceso de prueba
+function areaNueva(detalle: string, jefeId: number | null = null) {
+  return { detalle, jefeId, parentId: null, procesoId: PROCESO };
+}
+
 const cargoNuevo = {
   detalle: 'Laboratorista',
+  grado: null,
+  rolPuesto: null,
+  nivelJerarquico: 5,
   responsabilidad: 'Responsabilidad de prueba',
   funciones: 'Funciones de prueba',
 };
@@ -27,12 +38,10 @@ describe('areas', () => {
   });
 
   it('rechaza un area duplicada en el hospital y la permite en otro', async () => {
-    await expect(
-      repositorio.crearArea(IDS.empresaA, { detalle: 'Emergencia', jefeId: null }),
-    ).rejects.toMatchObject({ codigo: 'CONFLICTO' });
-    await expect(
-      repositorio.crearArea(IDS.empresaB, { detalle: 'Emergencia', jefeId: null }),
-    ).resolves.toBeGreaterThan(0);
+    await expect(repositorio.crearArea(IDS.empresaA, areaNueva('Emergencia'))).rejects.toMatchObject({
+      codigo: 'CONFLICTO',
+    });
+    await expect(repositorio.crearArea(IDS.empresaB, areaNueva('Emergencia'))).resolves.toBeGreaterThan(0);
   });
 
   it('acepta como jefe a alguien del hospital y lo muestra al consultar el area', async () => {
@@ -44,7 +53,7 @@ describe('areas', () => {
       nombres: 'Rosa',
       apellidos: 'Mena',
     });
-    const id = await repositorio.crearArea(IDS.empresaA, { detalle: 'Laboratorio', jefeId: jefe });
+    const id = await repositorio.crearArea(IDS.empresaA, areaNueva('Laboratorio', jefe));
     const area = await repositorio.buscarArea(IDS.empresaA, id);
     expect(area?.jefe).toEqual({ id: jefe, nombres: 'Rosa', apellidos: 'Mena' });
   });
@@ -56,8 +65,30 @@ describe('areas', () => {
       cargoId: IDS.cargoB1,
       cedula: '0900000001',
     });
+    await expect(repositorio.crearArea(IDS.empresaA, areaNueva('Laboratorio', ajeno))).rejects.toMatchObject({
+      codigo: 'REGLA_DE_NEGOCIO',
+    });
+  });
+
+  it('crea una subarea dentro de un area y la muestra con su padre y su proceso', async () => {
+    const id = await repositorio.crearArea(IDS.empresaA, {
+      detalle: 'Triaje',
+      jefeId: null,
+      parentId: IDS.areaA1,
+      procesoId: PROCESO,
+    });
+    const area = await repositorio.buscarArea(IDS.empresaA, id);
+    expect(area).toMatchObject({ detalle: 'Triaje', parentId: IDS.areaA1, procesoId: PROCESO });
+  });
+
+  it('rechaza una subarea cuyo area padre es de otro hospital', async () => {
     await expect(
-      repositorio.crearArea(IDS.empresaA, { detalle: 'Laboratorio', jefeId: ajeno }),
+      repositorio.crearArea(IDS.empresaA, {
+        detalle: 'Triaje',
+        jefeId: null,
+        parentId: IDS.areaB1,
+        procesoId: PROCESO,
+      }),
     ).rejects.toMatchObject({ codigo: 'REGLA_DE_NEGOCIO' });
   });
 
@@ -80,6 +111,18 @@ describe('areas', () => {
       areaId: IDS.areaA1,
       cargoId: IDS.cargoA1,
       cedula: '0100000001',
+    });
+    await expect(repositorio.eliminarArea(IDS.empresaA, IDS.areaA1)).rejects.toMatchObject({
+      codigo: 'CONFLICTO',
+    });
+  });
+
+  it('no elimina un area que tiene subareas', async () => {
+    await repositorio.crearArea(IDS.empresaA, {
+      detalle: 'Triaje',
+      jefeId: null,
+      parentId: IDS.areaA1,
+      procesoId: PROCESO,
     });
     await expect(repositorio.eliminarArea(IDS.empresaA, IDS.areaA1)).rejects.toMatchObject({
       codigo: 'CONFLICTO',

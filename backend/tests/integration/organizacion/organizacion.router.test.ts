@@ -51,8 +51,8 @@ async function crearEscenario() {
   app.use(errorHandler);
 
   // Un area en cada hospital (5 es el hospital de las pruebas, 6 es el ajeno)
-  const idAreaPropia = await memoria.repositorio.crearArea(5, { detalle: 'Emergencia', jefeId: null });
-  const idAreaAjena = await memoria.repositorio.crearArea(6, { detalle: 'Quirofano', jefeId: null });
+  const idAreaPropia = await memoria.repositorio.crearArea(5, { detalle: 'Emergencia', jefeId: null, parentId: null, procesoId: 2 });
+  const idAreaAjena = await memoria.repositorio.crearArea(6, { detalle: 'Quirofano', jefeId: null, parentId: null, procesoId: 2 });
 
   return { app, idAreaPropia, idAreaAjena, areasEnUso: memoria.areasEnUso };
 }
@@ -116,7 +116,7 @@ describe('areas', () => {
     const respuesta = await autorizar(
       request(app).post(`${BASE}/areas`),
       await tokenDe('SUPERADMIN'),
-    ).send({ detalle: '  Laboratorio ' });
+    ).send({ detalle: '  Laboratorio ', procesoId: 2 });
     const cuerpo = respuesta.body as CuerpoArea;
     expect(respuesta.status).toBe(201);
     expect(cuerpo.area).toMatchObject({ detalle: 'Laboratorio', jefe: null });
@@ -137,7 +137,7 @@ describe('areas', () => {
     const respuesta = await autorizar(
       request(app).post(`${BASE}/areas`),
       await tokenDe('SUPERADMIN'),
-    ).send({ detalle: 'Emergencia' });
+    ).send({ detalle: 'Emergencia', procesoId: 2 });
     expect(respuesta.status).toBe(409);
     expect((respuesta.body as CuerpoError).codigo).toBe('CONFLICTO');
   });
