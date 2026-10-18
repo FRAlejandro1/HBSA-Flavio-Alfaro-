@@ -73,7 +73,7 @@ cliente -e "DROP DATABASE IF EXISTS \`$DESTINO\`; CREATE DATABASE \`$DESTINO\` C
 
 # Se quita DEFINER de los triggers: el usuario que los creo puede no existir en este servidor
 echo "Restaurando $ARCHIVO"
-leer_respaldo | sed -E 's/DEFINER=`[^`]+`@`[^`]+`//g' | cliente "$DESTINO"
+leer_respaldo | sed -E 's|/\*!50017 DEFINER=.*\*/||g' | cliente "$DESTINO"
 
 tablas="$(cliente -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$DESTINO'" | tr -d '[:space:]')"
 triggers="$(cliente -N -e "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = '$DESTINO'" | tr -d '[:space:]')"

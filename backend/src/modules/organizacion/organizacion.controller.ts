@@ -12,7 +12,9 @@ import type {
 } from './organizacion.validators';
 
 export interface OrganizacionController {
+  listarProcesos: RequestHandler;
   listarAreas: RequestHandler;
+  listarArbolAreas: RequestHandler;
   crearArea: RequestHandler;
   actualizarArea: RequestHandler;
   eliminarArea: RequestHandler;
@@ -39,8 +41,16 @@ function leerId(req: Request): number {
 
 export function crearOrganizacionController(servicio: OrganizacionService): OrganizacionController {
   return {
+    listarProcesos: async (_req, res) => {
+      res.json({ procesos: await servicio.listarProcesos() });
+    },
+
     listarAreas: async (req, res) => {
       res.json({ areas: await servicio.listarAreas(obtenerEmpresaId(req)) });
+    },
+
+    listarArbolAreas: async (req, res) => {
+      res.json({ arbol: await servicio.listarArbol(obtenerEmpresaId(req)) });
     },
 
     crearArea: async (req, res) => {

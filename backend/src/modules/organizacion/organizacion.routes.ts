@@ -32,7 +32,9 @@ export function crearOrganizacionRouter(deps: DependenciasRouterOrganizacion): R
   const administraCargos = authorizeRole('SUPERADMIN', 'TALENTO_HUMANO');
 
   // Lectura: cualquier rol autenticado (los formularios necesitan los catalogos)
+  router.get('/procesos', c.listarProcesos);
   router.get('/areas', c.listarAreas);
+  router.get('/areas/arbol', c.listarArbolAreas);
   router.get('/cargos', c.listarCargos);
 
   router.post('/areas', administraAreas, validate({ body: esquemaCrearArea }), c.crearArea);
