@@ -9,7 +9,7 @@ export default defineConfig({
     // Todas las pruebas viven en tests/{unit,integration,e2e,performance}
     include: ['tests/**/*.test.ts'],
     // Las pruebas con base de datos real se ejecutan con npm run test:db
-    exclude: [...configDefaults.exclude, 'tests/integration/repositorios/**', 'tests/e2e/**'],
+    exclude: [...configDefaults.exclude, 'tests/integration/repositorios/**', 'tests/integration/vacaciones.integracion.test.ts', 'tests/e2e/**'],
     // Variables minimas para que config/env.ts valide al importarse en las pruebas
     env: {
       CORS_ORIGINS: 'http://localhost:5173',

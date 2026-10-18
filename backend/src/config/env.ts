@@ -58,6 +58,11 @@ const esquemaEnv = z
     // Regla de negocio configurable: dias laborables de vacaciones por periodo
     DIAS_VACACIONES_ANUALES: z.coerce.number().positive().default(30),
 
+    // Horas que tiene quien debe aprobar un paso para responder; pasado ese plazo la solicitud puede escalarse.
+    // Es el mismo para todos los hospitales y se acepta con decimales (0.5 = media hora).
+    // Valor provisional hasta afinarlo con los usuarios: cambiarlo exige reiniciar el servidor.
+    PLAZO_APROBACION_HORAS: z.coerce.number().positive().default(1),
+
     // Zona horaria del hospital: define que dia es "hoy" para las reglas por dias de calendario.
     // Los instantes se guardan siempre en UTC, sin importar este valor.
     ZONA_HORARIA_NEGOCIO: z
