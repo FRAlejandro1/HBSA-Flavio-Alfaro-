@@ -1,23 +1,90 @@
-// Parametros de las pruebas contra MySQL y Redis reales.
-// Se leen de variables TEST_* (nunca de DB_*), asi una prueba jamas toca la base de desarrollo o de produccion.
-// Los valores por defecto coinciden con docker-compose.yml.
+﻿// Parametros de las pruebas contra MySQL y Redis reales.
+// Se usan exclusivamente variables TEST_* para no reutilizar la configuracion de desarrollo.
+
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const posiblesArchivosEntorno = [
+  path.resolve(process.cwd(), '.env.test'),
+  path.resolve(process.cwd(), 'backend/.env.test'),
+];
+
+const archivoEntornoPruebas = posiblesArchivosEntorno.find((archivo) =>
+  existsSync(archivo),
+);
+
+function leerClaveLocal(nombre: string): string | undefined {
+  if (!archivoEntornoPruebas) {
+    return undefined;
+  }
+
+  const lineas = readFileSync(archivoEntornoPruebas, 'utf8')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/);
+
+  const linea = lineas.find((contenido) =>
+    new RegExp(`^\\s*${nombre}\\s*=`).test(contenido),
+  );
+
+  if (!linea) {
+    return undefined;
+  }
+
+  let valor = linea.slice(linea.indexOf('=') + 1).trim();
+
+  if (
+    valor.length >= 2 &&
+    ((valor.startsWith('"') && valor.endsWith('"')) ||
+      (valor.startsWith("'") && valor.endsWith("'")))
+  ) {
+    valor = valor.slice(1, -1);
+  }
+
+  return valor || undefined;
+}
 
 function leer(nombre: string, porDefecto: string): string {
   return process.env[nombre] ?? porDefecto;
 }
 
+const password =
+  process.env.TEST_DB_PASSWORD ?? leerClaveLocal('TEST_DB_PASSWORD');
+
+if (!password) {
+  throw new Error(
+    'Falta TEST_DB_PASSWORD. Configurala en el entorno o en backend/.env.test.',
+  );
+}
+
+const puerto = Number(leer('TEST_DB_PORT', '3307'));
+
+if (!Number.isInteger(puerto) || puerto < 1 || puerto > 65535) {
+  throw new Error('TEST_DB_PORT debe ser un puerto entero entre 1 y 65535.');
+}
+
+const nombreBase = leer('TEST_DB_NAME', 'hbsa_vacaciones_test');
+
+if (!nombreBase.endsWith('_test')) {
+  throw new Error(
+    `Por seguridad, las pruebas requieren una base terminada en _test. Recibida: ${nombreBase}`,
+  );
+}
+
 export const conexionPruebas = {
-  host: leer('TEST_DB_HOST', 'localhost'),
-  port: Number.parseFloat(leer('TEST_DB_PORT', '3306')),
+  host: leer('TEST_DB_HOST', '127.0.0.1'),
+  port: puerto,
   user: leer('TEST_DB_USER', 'hbsa_app'),
-  password: leer('TEST_DB_PASSWORD', 'cambia-esta-clave'),
-  database: leer('TEST_DB_NAME', 'hbsa_vacaciones_test'),
+  password,
+  database: nombreBase,
 };
 
-// Base 1 de Redis, separada de la 0 que usa el desarrollo
-export const redisPruebas = leer('TEST_REDIS_URL', 'redis://localhost:6379/1');
+// Base 1 de Redis, separada de la base 0 utilizada habitualmente en desarrollo.
+export const redisPruebas = leer(
+  'TEST_REDIS_URL',
+  'redis://127.0.0.1:6379/1',
+);
 
-// Variables de entorno que ve el codigo de la aplicacion (config/env.ts) durante estas pruebas
+// Variables de entorno que recibe la aplicacion durante estas pruebas.
 export const variablesApp: Record<string, string> = {
   NODE_ENV: 'test',
   CORS_ORIGINS: 'http://localhost:5173',

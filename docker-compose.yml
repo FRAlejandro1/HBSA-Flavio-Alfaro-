@@ -20,7 +20,7 @@ services:
       --default-time-zone=+00:00
       --log-bin-trust-function-creators=1
     ports:
-      - '3306:3306'
+      - '3307:3306'
     volumes:
       # Datos persistentes entre reinicios
       - mysql_datos:/var/lib/mysql

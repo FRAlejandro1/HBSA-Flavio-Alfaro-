@@ -245,6 +245,26 @@ describe('obtener', () => {
     expect(talento.status).toBe(200);
   });
 
+  it('SUPERADMIN del mismo hospital puede consultar el detalle', async () => {
+    const { app, id } = await solicitudDeLuis();
+    const respuesta = await autorizar(
+      request(app).get(`${BASE}/${String(id)}`),
+      await tokenDe(51, 'SUPERADMIN'),
+    );
+
+    expect(respuesta.status).toBe(200);
+    expect((respuesta.body as CuerpoSolicitud).solicitud.id).toBe(id);
+  });
+
+  it('SUPERADMIN de otro hospital no puede consultar el detalle', async () => {
+    const { app, id } = await solicitudDeLuis();
+    const respuesta = await autorizar(
+      request(app).get(`${BASE}/${String(id)}`),
+      await tokenDe(51, 'SUPERADMIN', 6),
+    );
+
+    expect(respuesta.status).toBe(404);
+  });
   it('otro empleado recibe 404, como si no existiera', async () => {
     const { app, id } = await solicitudDeLuis();
     const respuesta = await autorizar(request(app).get(`${BASE}/${String(id)}`), await tokenDe(8));
@@ -315,6 +335,18 @@ describe('listar', () => {
     expect((deOtra.body as CuerpoPagina).total).toBe(0);
   });
 
+  it('el listado no incluye solicitudes de otro hospital', async () => {
+    const { app } = await conDosSolicitudesDeLuis();
+    const respuesta = await autorizar(
+      request(app).get(BASE),
+      await tokenDe(1, 'SUPERADMIN', 6),
+    );
+    const cuerpo = respuesta.body as CuerpoPagina;
+
+    expect(respuesta.status).toBe(200);
+    expect(cuerpo.total).toBe(0);
+    expect(cuerpo.solicitudes).toEqual([]);
+  });
   it('rechaza filtros invalidos o desconocidos', async () => {
     const { app } = crearEscenario();
     const token = await tokenDe(1);
