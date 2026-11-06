@@ -1,7 +1,7 @@
-﻿import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { peticionApi } from '@/api/http';
-import { listarSolicitudes } from '@/features/dashboard/dashboard.api';
-import type { RespuestaSolicitudes } from '@/features/dashboard/dashboard.types';
+import { listarSolicitudes } from '@/features/dashboard/api/dashboard.api';
+import type { RespuestaSolicitudes } from '@/features/dashboard/model/dashboard.types';
 
 vi.mock('@/api/http', () => ({
   peticionApi: vi.fn(),

@@ -1,4 +1,4 @@
-// Acceso a datos de areas, procesos y cargos. Solo SQL parametrizado y siempre filtrado por empresa_id
+﻿// Acceso a datos de areas, procesos y cargos. Solo SQL parametrizado y siempre filtrado por empresa_id
 // (los procesos son un catalogo global y no llevan empresa_id).
 // El service depende de IOrganizacionRepository, no de esta clase.
 import type { IBaseDatos, ValorSql } from '../../config/database';
@@ -23,6 +23,13 @@ export interface IOrganizacionRepository {
   // Devuelve el id de la nueva area
   crearArea: (empresaId: number, datos: DatosArea) => Promise<number>;
   actualizarArea: (empresaId: number, id: number, cambios: CambiosArea) => Promise<void>;
+  // Configura los dias propios del area; null restablece la herencia institucional
+  configurarDiasVacacionesArea: (
+    empresaId: number,
+    actorId: number,
+    id: number,
+    diasVacaciones: number | null,
+  ) => Promise<number | null>;
   // true si se elimino; false si no existia en ese hospital
   eliminarArea: (empresaId: number, id: number) => Promise<boolean>;
 
@@ -38,9 +45,14 @@ interface FilaArea {
   detalle: string;
   parentId: number | null;
   procesoId: number | null;
+  diasVacaciones: number | string | null;
   jefeId: number | null;
   jefeNombres: string | null;
   jefeApellidos: string | null;
+}
+
+interface FilaDiasVacaciones {
+  diasVacaciones: number | string | null;
 }
 
 const MENSAJES_AREA: MensajesErrorBD = {
@@ -54,9 +66,14 @@ const MENSAJES_CARGO: MensajesErrorBD = {
   enUso: 'El cargo esta asignado a personal o a solicitudes y no se puede eliminar',
 };
 
+const MENSAJES_DIAS_VACACIONES_AREA: MensajesErrorBD = {
+  referenciaInvalida: 'El area indicada no existe en este hospital',
+};
+
 // Base de las consultas de areas: trae tambien el nombre del jefe, de la misma empresa
 const SQL_AREAS = `
   SELECT a.id AS id, a.detalle AS detalle, a.parent_id AS parentId, a.proceso_id AS procesoId,
+         a.dias_vacaciones AS diasVacaciones,
          u.id AS jefeId, u.nombres AS jefeNombres, u.apellidos AS jefeApellidos
   FROM areas a
   LEFT JOIN usuarios u ON u.empresa_id = a.empresa_id AND u.id = a.jefe_id
@@ -77,6 +94,8 @@ function aArea(fila: FilaArea): Area {
     jefe,
     parentId: fila.parentId,
     procesoId: fila.procesoId,
+    diasVacaciones:
+      fila.diasVacaciones === null ? null : Number(fila.diasVacaciones),
   };
 }
 
@@ -138,6 +157,70 @@ export class OrganizacionRepository implements IOrganizacionRepository {
       );
     } catch (error) {
       throw traducirErrorBD(error, MENSAJES_AREA);
+    }
+  }
+
+  // Actualiza los dias del area y registra el cambio de forma atomica en la auditoria
+  async configurarDiasVacacionesArea(
+    empresaId: number,
+    actorId: number,
+    id: number,
+    diasVacaciones: number | null,
+  ): Promise<number | null> {
+    try {
+      return await this.bd.transaccion(async (tx) => {
+        const [actual] = await tx.consultar<FilaDiasVacaciones>(
+          `SELECT dias_vacaciones AS diasVacaciones
+           FROM areas
+           WHERE empresa_id = ? AND id = ?
+           FOR UPDATE`,
+          [empresaId, id],
+        );
+
+        if (!actual) {
+          throw new Error('AREA_NO_ENCONTRADA');
+        }
+
+        const antes =
+          actual.diasVacaciones === null ? null : Number(actual.diasVacaciones);
+
+        await tx.ejecutar(
+          'UPDATE areas SET dias_vacaciones = ? WHERE empresa_id = ? AND id = ?',
+          [diasVacaciones, empresaId, id],
+        );
+
+        await tx.ejecutar(
+          `INSERT INTO audit_log
+             (empresa_id, usuario_id, accion, entidad, entidad_id, detalle)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            empresaId,
+            actorId,
+            'ACTUALIZACION_DIAS_VACACIONES_AREA',
+            'AREA',
+            id,
+            JSON.stringify({ antes, despues: diasVacaciones }),
+          ],
+        );
+
+        const [actualizada] = await tx.consultar<FilaDiasVacaciones>(
+          `SELECT dias_vacaciones AS diasVacaciones
+           FROM areas
+           WHERE empresa_id = ? AND id = ?
+           LIMIT 1`,
+          [empresaId, id],
+        );
+
+        return actualizada?.diasVacaciones === null ||
+          actualizada?.diasVacaciones === undefined
+          ? null
+          : Number(actualizada.diasVacaciones);
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'AREA_NO_ENCONTRADA') {
+        throw error;
+      }
+      throw traducirErrorBD(error, MENSAJES_DIAS_VACACIONES_AREA);
     }
   }
 

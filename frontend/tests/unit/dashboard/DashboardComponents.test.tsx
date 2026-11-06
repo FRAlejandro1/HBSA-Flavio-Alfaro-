@@ -1,15 +1,13 @@
-﻿import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UsuarioAutenticado } from '@/features/auth/auth.types';
-import type { Solicitud } from '@/features/dashboard/dashboard.types';
-import { AccessibilityTools } from '@/features/dashboard/components/AccessibilityTools';
-import { DashboardHeader } from '@/features/dashboard/components/DashboardHeader';
-import { DashboardModules } from '@/features/dashboard/components/DashboardModules';
-import { DashboardSidebar } from '@/features/dashboard/components/DashboardSidebar';
-import { DashboardWelcome } from '@/features/dashboard/components/DashboardWelcome';
-import { SolicitudesList } from '@/features/dashboard/components/SolicitudesList';
-import { SolicitudesSummary } from '@/features/dashboard/components/SolicitudesSummary';
-
+import type { Solicitud } from '@/features/dashboard/model/dashboard.types';
+import { AccessibilityTools } from '@/features/dashboard/components/layout/AccessibilityTools';
+import { DashboardHeader } from '@/features/dashboard/components/layout/DashboardHeader';
+import { DashboardModules } from '@/features/dashboard/components/inicio/DashboardModules';
+import { DashboardSidebar } from '@/features/dashboard/components/layout/DashboardSidebar';
+import { SolicitudesList } from '@/features/dashboard/components/solicitudes/SolicitudesList';
+import { SolicitudesSummary } from '@/features/dashboard/components/solicitudes/SolicitudesSummary';
 afterEach(() => {
   cleanup();
   document.documentElement.style.removeProperty('--escala-texto');
@@ -58,9 +56,9 @@ describe('DashboardHeader', () => {
         name: `Cambiar tema. Tema actual: ${tema}`,
       }),
     ).toHaveTextContent(icono);
-    expect(screen.getByRole('heading', { name: 'Inicio' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Hola, Ana' })).toBeInTheDocument();
     expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
-    expect(screen.getByText('Analista')).toBeInTheDocument();
+    expect(screen.getByText('Analista · Administración')).toBeInTheDocument();
   });
 
   it('permite cambiar el tema y anunciar las notificaciones', () => {
@@ -100,7 +98,7 @@ describe('DashboardHeader', () => {
       />,
     );
 
-    expect(screen.getByText('Personal institucional')).toBeInTheDocument();
+    expect(screen.getByText('Personal institucional · Administración')).toBeInTheDocument();
   });
 });
 
@@ -175,26 +173,6 @@ describe('DashboardSidebar', () => {
   });
 });
 
-describe('DashboardWelcome', () => {
-  it('muestra el saludo y el rol', () => {
-    render(<DashboardWelcome usuario={usuario} />);
-
-    expect(screen.getByRole('heading', { name: 'Hola, Ana' })).toBeInTheDocument();
-    expect(screen.getByText('SUPERADMIN')).toBeInTheDocument();
-  });
-
-  it('reemplaza los guiones bajos del rol por espacios', () => {
-    const usuarioConRolCompuesto: UsuarioAutenticado = {
-      ...usuario,
-      rol: 'TALENTO_HUMANO',
-    };
-
-    render(<DashboardWelcome usuario={usuarioConRolCompuesto} />);
-
-    expect(screen.getByText('TALENTO HUMANO')).toBeInTheDocument();
-  });
-});
-
 describe('DashboardModules', () => {
   it('invoca la apertura del formulario de vacaciones', () => {
     const onSolicitarVacaciones = vi.fn();
@@ -217,36 +195,35 @@ describe('DashboardModules', () => {
     {
       nombre: 'permisos',
       mensaje: 'El módulo de permisos por horas está en desarrollo.',
+      nombreBoton: /Solicitar permiso/,
     },
     {
       nombre: 'licencias',
-      mensaje: 'El módulo de licencias médicas está en desarrollo.',
+      mensaje: 'El módulo de licencias por enfermedad está en desarrollo.',
+      nombreBoton: /Solicitar licencia/,
     },
-    {
-      nombre: 'comprobantes',
-      mensaje: 'La descarga de comprobantes estará disponible próximamente.',
+  ])(
+    'anuncia la disponibilidad pendiente: $nombre',
+    ({ mensaje, nombreBoton }) => {
+      const anunciar = vi.fn();
+
+      render(
+        <DashboardModules
+          onSolicitarVacaciones={vi.fn()}
+          anunciar={anunciar}
+        />,
+      );
+
+      const boton = screen.getByRole('button', {
+        name: nombreBoton,
+      });
+
+      expect(boton).toBeDefined();
+      fireEvent.click(boton);
+
+      expect(anunciar).toHaveBeenCalledWith(mensaje);
     },
-  ])('anuncia la disponibilidad pendiente: $nombre', ({ nombre, mensaje }) => {
-    const anunciar = vi.fn();
-
-    render(
-      <DashboardModules
-        onSolicitarVacaciones={vi.fn()}
-        anunciar={anunciar}
-      />,
-    );
-
-    const boton = nombre === 'comprobantes'
-      ? screen.getByRole('button', { name: /Descargar comprobante/ })
-      : screen.getAllByRole('button', { name: 'Próximamente' })[
-          nombre === 'permisos' ? 0 : 1
-        ];
-
-    expect(boton).toBeDefined();
-    fireEvent.click(boton!);
-
-    expect(anunciar).toHaveBeenCalledWith(mensaje);
-  });
+  );
 });
 
 describe('SolicitudesList', () => {
@@ -286,13 +263,13 @@ describe('SolicitudesList', () => {
     );
 
     expect(screen.getByText(etiqueta)).toBeInTheDocument();
-    expect(screen.getByText('Solicitud VAC-001')).toBeInTheDocument();
+    expect(screen.getByText('VAC-001')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Ver detalle' }),
+      screen.getByRole('button', { name: 'Ver el seguimiento de la solicitud VAC-001' }),
     ).toBeInTheDocument();
   });
 
-  it('anuncia el intento de consultar el detalle', () => {
+  it('anuncia cómo consultar el detalle si no se proporciona selección', () => {
     const anunciar = vi.fn();
 
     render(
@@ -303,11 +280,28 @@ describe('SolicitudesList', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver el seguimiento de la solicitud VAC-001' }));
 
     expect(anunciar).toHaveBeenCalledWith(
-      'El detalle de la solicitud VAC-001 se habilitará próximamente.',
+      'Seleccione el detalle de la solicitud VAC-001 desde el panel de seguimiento.',
     );
+  });
+
+  it('selecciona la solicitud cuando se proporciona la función de selección', () => {
+    const alSeleccionar = vi.fn();
+
+    render(
+      <SolicitudesList
+        solicitudes={[solicitud]}
+        cargando={false}
+        anunciar={vi.fn()}
+        alSeleccionar={alSeleccionar}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver el seguimiento de la solicitud VAC-001' }));
+
+    expect(alSeleccionar).toHaveBeenCalledWith(solicitud);
   });
 
   it('conserva el valor original si la fecha no puede interpretarse', () => {

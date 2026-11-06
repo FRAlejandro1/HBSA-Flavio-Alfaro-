@@ -1,0 +1,363 @@
+/* Vista «Solicitar vacaciones»: formulario a la izquierda y resumen a la derecha. */
+.vacation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.vacation-aside {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vacation-panel {
+  min-width: 0;
+}
+
+.vacation-formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.vacation-nota {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+.vacation-seccion {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vacation-panel .vacation-titulo {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+/* Datos del servidor y datos calculados: tarjetas de solo lectura. */
+.vacation-datos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.vacation-datos > div,
+.vacation-dato {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  background: var(--panel-soft);
+}
+
+.vacation-datos dt,
+.vacation-dato-etiqueta {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+.vacation-datos dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vacation-dato-valor {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+/* Campos del formulario. */
+.vacation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.vacation-campo {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vacation-campo label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.vacation-opcional {
+  color: var(--app-muted);
+  font-weight: 400;
+}
+
+.vacation-campo input,
+.vacation-campo textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  background: var(--panel-bg);
+  color: var(--app-text);
+  font: inherit;
+}
+
+.vacation-campo textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.vacation-campo textarea:focus-visible {
+  outline: 3px solid var(--app-primary);
+  outline-offset: 3px;
+}
+
+.vacation-ayuda {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* Calendario del mes: el período y los fines de semana se resaltan. */
+.vacation-calendario {
+  display: flex;
+  max-width: 360px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+}
+
+.vacation-calendario-encabezado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vacation-calendario-mes {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.vacation-calendario-nav {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--app-text);
+  font-size: 1.1rem;
+}
+
+.vacation-calendario-nav:hover {
+  background: var(--panel-soft);
+}
+
+.vacation-calendario-nav:focus-visible {
+  outline: 3px solid var(--app-primary);
+  outline-offset: 3px;
+}
+
+.vacation-calendario-rejilla {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.vacation-dia {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--panel-soft);
+  font-size: 0.875rem;
+}
+
+.vacation-dia-nombre {
+  background: transparent;
+  color: var(--app-muted);
+  font-weight: 700;
+}
+
+.vacation-dia-vacio {
+  background: transparent;
+}
+
+.vacation-dia-fin-de-semana {
+  background: var(--app-border);
+  color: var(--app-muted);
+}
+
+.vacation-dia-feriado {
+  border: 2px dashed var(--app-primary);
+}
+
+.vacation-dia-periodo {
+  background: var(--app-primary);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.vacation-dia-en-rango {
+  outline: 2px solid var(--app-primary);
+  outline-offset: -2px;
+}
+
+:root[data-tema='oscuro'] .vacation-dia-periodo {
+  color: #111827;
+}
+
+:root[data-tema='alto-contraste'] .vacation-dia-periodo {
+  color: #000000;
+}
+
+.vacation-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.vacation-leyenda-marca {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  border-radius: 4px;
+  vertical-align: -2px;
+}
+
+/* Acciones del formulario. */
+.vacation-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--app-border);
+}
+
+.vacation-panel .vacation-acciones .primary-button,
+.vacation-panel .vacation-acciones .secondary-button {
+  width: auto;
+  min-width: 150px;
+}
+
+/* Resumen lateral: saldo y ruta de aprobación. */
+.vacation-saldo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.vacation-saldo > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vacation-saldo dt {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+.vacation-saldo dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.vacation-saldo-total {
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border);
+}
+
+.vacation-saldo-total dt {
+  color: var(--app-text);
+  font-weight: 700;
+}
+
+.vacation-barra {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--app-border);
+}
+
+.vacation-ruta {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vacation-ruta li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.vacation-ruta-punto {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--app-muted);
+  border-radius: 50%;
+  background: var(--panel-bg);
+}
+
+.vacation-ruta-punto-inicio {
+  border-color: var(--app-primary);
+  background: var(--app-primary);
+}
+
+.vacation-ruta-detalle {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vacation-ruta-detalle span {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 1100px) {
+  .vacation-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .vacation-acciones {
+    flex-direction: column-reverse;
+  }
+
+  .vacation-panel .vacation-acciones .primary-button,
+  .vacation-panel .vacation-acciones .secondary-button {
+    width: 100%;
+  }
+}

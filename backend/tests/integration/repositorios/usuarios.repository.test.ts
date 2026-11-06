@@ -215,6 +215,143 @@ describe('actualizar', () => {
   });
 });
 
+describe('configurar dias de vacaciones', () => {
+  it('establece la excepcion individual y registra la auditoria', async () => {
+    const actorId = await repositorio.crear(
+      IDS.empresaA,
+      nuevo({ cedula: '0100000001', rol: 'SUPERADMIN' }),
+    );
+    const empleadoId = await repositorio.crear(
+      IDS.empresaA,
+      nuevo({ cedula: '0100000002' }),
+    );
+
+    const resultado = await repositorio.configurarDiasVacaciones(
+      IDS.empresaA,
+      actorId,
+      empleadoId,
+      25.5,
+    );
+
+    expect(resultado).toBe(25.5);
+
+    const [usuario] = await bd.consultar<{ dias_vacaciones: number | string | null }>(
+      'SELECT dias_vacaciones FROM usuarios WHERE empresa_id = ? AND id = ?',
+      [IDS.empresaA, empleadoId],
+    );
+    expect(Number(usuario?.dias_vacaciones)).toBe(25.5);
+
+    const [auditoria] = await bd.consultar<{
+      empresa_id: number;
+      usuario_id: number;
+      accion: string;
+      entidad: string;
+      entidad_id: number;
+    }>(
+      `SELECT empresa_id, usuario_id, accion, entidad, entidad_id
+       FROM audit_log
+       WHERE empresa_id = ? AND entidad = 'USUARIO' AND entidad_id = ?`,
+      [IDS.empresaA, empleadoId],
+    );
+
+    expect(auditoria).toMatchObject({
+      empresa_id: IDS.empresaA,
+      usuario_id: actorId,
+      accion: 'ACTUALIZACION_DIAS_VACACIONES_EMPLEADO',
+      entidad: 'USUARIO',
+      entidad_id: empleadoId,
+    });
+  });
+
+  it('permite restablecer la herencia del area mediante null', async () => {
+    const actorId = await repositorio.crear(
+      IDS.empresaA,
+      nuevo({ cedula: '0100000001', rol: 'SUPERADMIN' }),
+    );
+    const empleadoId = await repositorio.crear(
+      IDS.empresaA,
+      nuevo({ cedula: '0100000002' }),
+    );
+
+    await repositorio.configurarDiasVacaciones(
+      IDS.empresaA,
+      actorId,
+      empleadoId,
+      25.5,
+    );
+
+    const resultado = await repositorio.configurarDiasVacaciones(
+      IDS.empresaA,
+      actorId,
+      empleadoId,
+      null,
+    );
+
+    expect(resultado).toBeNull();
+
+    const [usuario] = await bd.consultar<{ dias_vacaciones: number | string | null }>(
+      'SELECT dias_vacaciones FROM usuarios WHERE empresa_id = ? AND id = ?',
+      [IDS.empresaA, empleadoId],
+    );
+    expect(usuario?.dias_vacaciones).toBeNull();
+
+    const auditorias = await bd.consultar<{
+      detalle: { antes: number | null; despues: number | null } | string;
+    }>(
+      `SELECT detalle
+       FROM audit_log
+       WHERE empresa_id = ? AND entidad = 'USUARIO' AND entidad_id = ?
+       ORDER BY id`,
+      [IDS.empresaA, empleadoId],
+    );
+
+    expect(auditorias).toHaveLength(2);
+
+    const ultimoDetalle: unknown =
+      typeof auditorias[1]?.detalle === 'string'
+        ? JSON.parse(auditorias[1].detalle)
+        : auditorias[1]?.detalle;
+
+    expect(ultimoDetalle).toEqual({ antes: 25.5, despues: null });
+  });
+
+  it('no modifica empleados de otro hospital', async () => {
+    const actorId = await repositorio.crear(
+      IDS.empresaA,
+      nuevo({ cedula: '0100000001', rol: 'SUPERADMIN' }),
+    );
+    const empleadoId = await repositorio.crear(
+      IDS.empresaB,
+      nuevo({ ...delHospitalB, cedula: '0100000002' }),
+    );
+
+    await expect(
+      repositorio.configurarDiasVacaciones(
+        IDS.empresaA,
+        actorId,
+        empleadoId,
+        25.5,
+      ),
+    ).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
+
+    const [usuario] = await bd.consultar<{ dias_vacaciones: number | string | null }>(
+      'SELECT dias_vacaciones FROM usuarios WHERE empresa_id = ? AND id = ?',
+      [IDS.empresaB, empleadoId],
+    );
+
+    expect(usuario?.dias_vacaciones).toBeNull();
+
+    const auditorias = await bd.consultar<{ total: number }>(
+      `SELECT COUNT(*) AS total
+       FROM audit_log
+       WHERE empresa_id = ? AND entidad = 'USUARIO' AND entidad_id = ?`,
+      [IDS.empresaA, empleadoId],
+    );
+
+    expect(Number(auditorias[0]?.total ?? 0)).toBe(0);
+  });
+});
+
 describe('baja y reactivacion', () => {
   it('da de baja con la fecha de hoy de la base y borra el refresh token', async () => {
     const id = await repositorio.crear(IDS.empresaA, nuevo());

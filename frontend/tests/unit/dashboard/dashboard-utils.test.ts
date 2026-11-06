@@ -1,5 +1,5 @@
-﻿import { FILTROS_SOLICITUDES, ESTADOS_SOLICITUD } from '@/features/dashboard/dashboard.constants';
-import { fechaLegible, obtenerNombreCompleto } from '@/features/dashboard/dashboard.utils';
+import { FILTROS_SOLICITUDES, ESTADOS_SOLICITUD } from '@/features/dashboard/model/dashboard.constants';
+import { fechaLegible, obtenerNombreCompleto } from '@/features/dashboard/model/dashboard.utils';
 import { describe, expect, it } from 'vitest';
 
 describe('Constantes del dashboard', () => {

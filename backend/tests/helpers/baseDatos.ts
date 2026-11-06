@@ -1,4 +1,4 @@
-// Utilidades para las pruebas con MySQL y Redis reales: datos de partida, personas de prueba y limpieza.
+﻿// Utilidades para las pruebas con MySQL y Redis reales: datos de partida, personas de prueba y limpieza.
 import { createConnection } from 'mysql2/promise';
 import { obtenerBaseDatos } from '../../src/config/database';
 import { env } from '../../src/config/env';
@@ -20,6 +20,10 @@ export const IDS = {
 
 // Tablas que se vacian entre pruebas (roles y schema_migraciones se conservan)
 const TABLAS = [
+  'asignaciones_jornada',
+  'patrones_jornada_detalle',
+  'patrones_jornada',
+  'turnos',
   'audit_log',
   'documentos_pdf',
   'notificaciones',

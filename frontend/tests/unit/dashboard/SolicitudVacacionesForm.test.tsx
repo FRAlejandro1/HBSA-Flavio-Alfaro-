@@ -1,13 +1,24 @@
-﻿import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { peticionApi } from '@/api/http';
-import { SolicitudVacacionesForm } from '@/features/dashboard/SolicitudVacacionesForm';
+import type { UsuarioAutenticado } from '@/features/auth/auth.types';
+import { SolicitudVacacionesForm } from '@/features/solicitud-vacaciones/SolicitudVacacionesForm';
 
 vi.mock('@/api/http', () => ({
   peticionApi: vi.fn(),
 }));
 
 const peticionApiMock = vi.mocked(peticionApi);
+const usuarioPrueba: UsuarioAutenticado = {
+  id: 1,
+  nombres: 'Ana',
+  apellidos: 'Pérez',
+  correo: 'ana@example.com',
+  rol: 'EMPLEADO',
+  empresa: { id: 1, nombre: 'Hospital de prueba' },
+  area: { id: 1, detalle: 'Administración' },
+  cargo: { id: 1, detalle: 'Analista' },
+};
 
 function fechaRelativa(dias: number): string {
   const fecha = new Date();
@@ -24,6 +35,7 @@ function renderFormulario() {
 
   render(
     <SolicitudVacacionesForm
+      usuario={usuarioPrueba}
       onCancel={onCancel}
       onCreated={onCreated}
     />,
@@ -33,10 +45,10 @@ function renderFormulario() {
 }
 
 function completarFechas(inicio: string, fin: string) {
-  fireEvent.change(screen.getByLabelText('Fecha de inicio'), {
+  fireEvent.change(screen.getByLabelText(/Fecha de inicio/), {
     target: { value: inicio },
   });
-  fireEvent.change(screen.getByLabelText('Fecha de fin'), {
+  fireEvent.change(screen.getByLabelText(/Fecha de finalización/), {
     target: { value: fin },
   });
 }
@@ -54,10 +66,10 @@ describe('SolicitudVacacionesForm', () => {
   it('muestra los campos y permite cancelar', () => {
     const { onCancel } = renderFormulario();
 
-    expect(screen.getByRole('heading', { name: 'Nueva solicitud de vacaciones' }))
+    expect(screen.getByRole('heading', { name: /Datos del servidor/ }))
       .toBeInTheDocument();
-    expect(screen.getByLabelText('Fecha de inicio')).toBeRequired();
-    expect(screen.getByLabelText('Fecha de fin')).toBeRequired();
+    expect(screen.getByLabelText(/Fecha de inicio/)).toBeRequired();
+    expect(screen.getByLabelText(/Fecha de finalización/)).toBeRequired();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
 
@@ -221,6 +233,7 @@ describe('SolicitudVacacionesForm', () => {
 
     render(
       <SolicitudVacacionesForm
+        usuario={usuarioPrueba}
         onCancel={vi.fn()}
         onCreated={onCreated}
       />,

@@ -137,4 +137,122 @@ describe('cliente HTTP', () => {
       method: 'DELETE',
     })).resolves.toBeUndefined();
   });
+
+  it('renueva el access token y repite una petición autenticada tras HTTP 401', async () => {
+    http.establecerTokenAcceso('access-vencido');
+
+    fetchMock
+      .mockResolvedValueOnce(respuesta(401, { mensaje: 'Token expirado' }, false))
+      .mockResolvedValueOnce(respuesta(200, { csrfToken: 'csrf-prueba' }))
+      .mockResolvedValueOnce(respuesta(200, {
+        accessToken: 'access-renovado',
+        expiraEn: 1800000000,
+      }))
+      .mockResolvedValueOnce(respuesta(200, { usuario: 'correcto' }));
+
+    await expect(http.peticionApi('/api/prueba', {
+      autenticada: true,
+    })).resolves.toEqual({ usuario: 'correcto' });
+
+    expect(http.obtenerTokenAcceso()).toBe('access-renovado');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/auth/csrf', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': 'csrf-prueba',
+      },
+      body: JSON.stringify({}),
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/prueba', {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer access-renovado',
+      },
+    });
+  });
+
+  it('limpia el access token cuando falla el refresh', async () => {
+    http.establecerTokenAcceso('access-vencido');
+
+    fetchMock
+      .mockResolvedValueOnce(respuesta(401, { mensaje: 'Token expirado' }, false))
+      .mockResolvedValueOnce(respuesta(200, { csrfToken: 'csrf-prueba' }))
+      .mockResolvedValueOnce(respuesta(401, { mensaje: 'Refresh inválido' }, false));
+
+    await expect(http.peticionApi('/api/prueba', {
+      autenticada: true,
+    })).rejects.toMatchObject({
+      name: 'ErrorApi',
+      estado: 401,
+    });
+
+    expect(http.obtenerTokenAcceso()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('no intenta refresh para una petición no autenticada que recibe HTTP 401', async () => {
+    fetchMock.mockResolvedValueOnce(
+      respuesta(401, { mensaje: 'No autenticado' }, false),
+    );
+
+    await expect(http.peticionApi('/api/prueba')).rejects.toMatchObject({
+      name: 'ErrorApi',
+      estado: 401,
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(http.obtenerTokenAcceso()).toBeNull();
+  });
+
+  it('limpia la sesión si el refresh devuelve un access token vacío', async () => {
+    http.establecerTokenAcceso('access-vencido');
+
+    fetchMock
+      .mockResolvedValueOnce(respuesta(401, { mensaje: 'Token expirado' }, false))
+      .mockResolvedValueOnce(respuesta(200, { csrfToken: 'csrf-prueba' }))
+      .mockResolvedValueOnce(respuesta(200, {
+        accessToken: '',
+        expiraEn: 1800000000,
+      }));
+
+    await expect(http.peticionApi('/api/prueba', {
+      autenticada: true,
+    })).rejects.toMatchObject({
+      name: 'ErrorApi',
+      estado: 401,
+      message: 'Token expirado',
+    });
+
+    expect(http.obtenerTokenAcceso()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+  it('no repite indefinidamente el refresh cuando falla su propio endpoint', async () => {
+    http.establecerTokenAcceso('access-vencido');
+
+    fetchMock
+      .mockResolvedValueOnce(respuesta(401, { mensaje: 'Token expirado' }, false))
+      .mockResolvedValueOnce(respuesta(200, { csrfToken: 'csrf-prueba' }))
+      .mockResolvedValueOnce(respuesta(401, { mensaje: 'Refresh inválido' }, false));
+
+    await expect(http.peticionApi('/api/prueba', {
+      autenticada: true,
+    })).rejects.toMatchObject({
+      estado: 401,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

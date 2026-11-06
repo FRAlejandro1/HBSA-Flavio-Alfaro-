@@ -43,7 +43,12 @@ function crearEscenario(asegurar: (empresaId: number, usuarioId: number, hoy: st
   const servicio = new VacacionesService({
     repositorio: memoria.repositorio,
     calcularDiasLaborables: contarDiasLaborablesDePrueba,
-    plazoAprobacionHoras: 1,
+    obtenerConfiguracionInstitucional: () => Promise.resolve({
+      plazoHoras: 1,
+      diasVacacionesAnuales: 30,
+      zonaHoraria: 'America/Guayaquil',
+      diasAnticipacionVacaciones: 3,
+    }),
     asegurarPeriodos: asegurar,
     ahora: () => AHORA,
   });

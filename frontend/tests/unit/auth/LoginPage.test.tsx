@@ -32,7 +32,7 @@ describe('LoginPage', () => {
   it('muestra el contenido y los campos obligatorios', () => {
     renderLogin();
     expect(screen.getByRole('heading', {
-      name: 'Sistema de Permisos y Vacaciones',
+      name: 'Sistema de Gestión de Personal',
     })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Iniciar sesión' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Correo electrónico' })).toBeRequired();

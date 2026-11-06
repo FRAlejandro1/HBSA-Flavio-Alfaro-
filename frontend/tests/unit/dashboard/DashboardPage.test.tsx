@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UsuarioAutenticado } from '@/features/auth/auth.types';
-import type { RespuestaSolicitudes, Solicitud } from '@/features/dashboard/dashboard.types';
+import type { RespuestaSolicitudes, Solicitud } from '@/features/dashboard/model/dashboard.types';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 
 const mocks = vi.hoisted(() => ({
@@ -13,11 +13,11 @@ vi.mock('@/features/auth/auth.api', () => ({
   cerrarSesion: mocks.cerrarSesion,
 }));
 
-vi.mock('@/features/dashboard/dashboard.api', () => ({
+vi.mock('@/features/dashboard/api/dashboard.api', () => ({
   listarSolicitudes: mocks.listarSolicitudes,
 }));
 
-vi.mock('@/features/dashboard/SolicitudVacacionesForm', () => ({
+vi.mock('@/features/solicitud-vacaciones/SolicitudVacacionesForm', () => ({
   SolicitudVacacionesForm: ({
     onCancel,
     onCreated,
@@ -80,6 +80,7 @@ function renderDashboard() {
 }
 
 beforeEach(() => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.clearAllMocks();
   mocks.listarSolicitudes.mockResolvedValue(respuesta);
   mocks.cerrarSesion.mockResolvedValue(undefined);
@@ -93,7 +94,7 @@ describe('DashboardPage', () => {
   it('carga y presenta las solicitudes del servidor', async () => {
     renderDashboard();
 
-    expect(await screen.findByText('Solicitud VAC-001')).toBeInTheDocument();
+    expect(await screen.findByText('VAC-001')).toBeInTheDocument();
     expect(screen.getByText('1 registradas')).toBeInTheDocument();
     expect(mocks.listarSolicitudes).toHaveBeenCalledOnce();
   });
@@ -124,7 +125,7 @@ describe('DashboardPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
 
-    expect(await screen.findByText('Solicitud VAC-001')).toBeInTheDocument();
+    expect(await screen.findByText('VAC-001')).toBeInTheDocument();
     expect(mocks.listarSolicitudes).toHaveBeenCalledTimes(2);
   });
 
@@ -141,24 +142,24 @@ describe('DashboardPage', () => {
   it('oculta las solicitudes cuando se seleccionan filtros no disponibles', async () => {
     renderDashboard();
 
-    expect(await screen.findByText('Solicitud VAC-001')).toBeInTheDocument();
+    expect(await screen.findByText('VAC-001')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Permisos' }));
 
     expect(
       screen.getByText('No hay solicitudes para mostrar'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Solicitud VAC-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('VAC-001')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Vacaciones' }));
 
-    expect(screen.getByText('Solicitud VAC-001')).toBeInTheDocument();
+    expect(screen.getByText('VAC-001')).toBeInTheDocument();
   });
 
   it('abre y cancela el formulario de vacaciones', async () => {
     renderDashboard();
 
-    await screen.findByText('Solicitud VAC-001');
+    await screen.findByText('VAC-001');
 
     fireEvent.click(
       screen.getByRole('button', { name: /Solicitar vacaciones/ }),
@@ -177,7 +178,7 @@ describe('DashboardPage', () => {
   it('anuncia el registro y recarga las solicitudes al crear una solicitud', async () => {
     const { anunciar } = renderDashboard();
 
-    await screen.findByText('Solicitud VAC-001');
+    await screen.findByText('VAC-001');
 
     fireEvent.click(
       screen.getByRole('button', { name: /Solicitar vacaciones/ }),
@@ -202,7 +203,7 @@ describe('DashboardPage', () => {
   it('cierra la sesión y notifica al componente superior', async () => {
     const { onLogout } = renderDashboard();
 
-    await screen.findByText('Solicitud VAC-001');
+    await screen.findByText('VAC-001');
 
     fireEvent.click(screen.getByRole('button', { name: 'Salir' }));
 
@@ -217,7 +218,7 @@ describe('DashboardPage', () => {
 
     const { onLogout, anunciar } = renderDashboard();
 
-    await screen.findByText('Solicitud VAC-001');
+    await screen.findByText('VAC-001');
 
     fireEvent.click(screen.getByRole('button', { name: 'Salir' }));
 
@@ -233,7 +234,7 @@ describe('DashboardPage', () => {
   it('permite cambiar el tema desde el encabezado', async () => {
     const { cambiarTema } = renderDashboard();
 
-    await screen.findByText('Solicitud VAC-001');
+    await screen.findByText('VAC-001');
 
     fireEvent.click(
       screen.getByRole('button', { name: /Cambiar tema/ }),

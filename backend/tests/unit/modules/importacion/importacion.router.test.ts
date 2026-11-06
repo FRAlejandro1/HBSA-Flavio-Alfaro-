@@ -1,6 +1,6 @@
 
- // Pruebas HTTP del módulo importación: archivo multipart, permisos, huella, CSRF y límites.
- // Usa el router real con tokens reales, el lector de CSV real y un repositorio en memoria.
+// Pruebas HTTP del módulo importación: archivo multipart, permisos, huella, CSRF y límites.
+// Usa el router real con tokens reales, el lector de CSV real y un repositorio en memoria.
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
@@ -230,6 +230,30 @@ describe('revisar', () => {
     expect((respuesta.body as CuerpoError).mensaje).toBe(
       'El archivo supera los 5 MB',
     );
+  });
+
+  it('propaga los errores multipart que no son errores de Multer', async () => {
+    const { app } = crearEscenario();
+    const token = await tokenDe('TALENTO_HUMANO');
+    const boundary = '----HBSABoundaryIncompleto';
+
+    const cuerpo = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="archivo"; filename="personal.csv"',
+      'Content-Type: text/csv',
+      '',
+      CSV,
+      // Intencionalmente no se incluye el delimitador de cierre.
+    ].join('\r\n');
+
+    const respuesta = await autorizar(
+      request(app).post(`${BASE}/revisar`),
+      token,
+    )
+      .set('Content-Type', `multipart/form-data; boundary=${boundary}`)
+      .send(cuerpo);
+
+    expect(respuesta.status).toBe(500);
   });
 });
 

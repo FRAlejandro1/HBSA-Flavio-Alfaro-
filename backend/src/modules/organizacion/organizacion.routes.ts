@@ -1,3 +1,4 @@
+
 // Endpoints de organizacion y los roles que pueden usar cada uno. Sin logica.
 // El CSRF de los metodos que cambian estado lo aplica app.ts a toda la API.
 import { Router } from 'express';
@@ -9,6 +10,7 @@ import type { OrganizacionController } from './organizacion.controller';
 import {
   esquemaActualizarArea,
   esquemaActualizarCargo,
+  esquemaConfigurarDiasVacacionesArea,
   esquemaCrearArea,
   esquemaCrearCargo,
   esquemaId,
@@ -43,6 +45,12 @@ export function crearOrganizacionRouter(deps: DependenciasRouterOrganizacion): R
     administraAreas,
     validate({ params: esquemaId, body: esquemaActualizarArea }),
     c.actualizarArea,
+  );
+  router.patch(
+    '/areas/:id/vacaciones',
+    administraAreas,
+    validate({ params: esquemaId, body: esquemaConfigurarDiasVacacionesArea }),
+    c.configurarDiasVacacionesArea,
   );
   router.delete('/areas/:id', administraAreas, validate({ params: esquemaId }), c.eliminarArea);
 

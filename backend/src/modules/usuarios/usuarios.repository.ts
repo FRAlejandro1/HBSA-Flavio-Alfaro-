@@ -1,6 +1,7 @@
-// Acceso a datos de usuarios. Solo SQL parametrizado y siempre filtrado por empresa_id.
+﻿// Acceso a datos de usuarios. Solo SQL parametrizado y siempre filtrado por empresa_id.
 // El service depende de IUsuariosRepository, no de esta clase.
 import type { IBaseDatos, ValorSql } from '../../config/database';
+import { AppError } from '../../shared/errors/AppError';
 import { traducirErrorBD } from '../../shared/errors/errorBD';
 import type { MensajesErrorBD } from '../../shared/errors/errorBD';
 import { aCodigoRol } from '../../shared/types/roles';
@@ -18,10 +19,17 @@ export interface IUsuariosRepository {
     filtros: FiltrosUsuarios,
   ) => Promise<{ usuarios: UsuarioDetalle[]; total: number }>;
   obtener: (empresaId: number, id: number) => Promise<UsuarioDetalle | null>;
-  // Devuelve el id de la nueva persona
+  // Devuelve el id de la nueva persona.
   crear: (empresaId: number, datos: DatosNuevoUsuario) => Promise<number>;
   actualizar: (empresaId: number, id: number, cambios: CambiosUsuario) => Promise<void>;
-  // Con fechaBaja en null se usa la fecha de hoy
+  // Configura los días individuales; null significa heredar los días del área.
+  configurarDiasVacaciones: (
+    empresaId: number,
+    actorId: number,
+    id: number,
+    diasVacaciones: number | null,
+  ) => Promise<number | null>;
+  // Con fechaBaja en null se usa la fecha de hoy.
   darDeBaja: (empresaId: number, id: number, fechaBaja: string | null) => Promise<void>;
   reactivar: (empresaId: number, id: number) => Promise<void>;
 }
@@ -47,13 +55,21 @@ interface FilaUsuario {
   tieneCuenta: number;
 }
 
+interface FilaDiasVacaciones {
+  diasVacaciones: number | string | null;
+}
+
 const MENSAJES: MensajesErrorBD = {
   duplicado: 'Ya existe una persona con esa cedula o ese correo',
   enUso: 'La persona tiene registros asociados y no se puede eliminar',
   referenciaInvalida: 'El area, el cargo o el jefe inmediato indicado no existe en este hospital',
 };
 
-// Base de las consultas: la persona con su rol, area, cargo y jefe inmediato, siempre de la misma empresa
+const MENSAJES_DIAS_VACACIONES: MensajesErrorBD = {
+  referenciaInvalida: 'La persona indicada no existe en este hospital',
+};
+
+// Base de las consultas: la persona con su rol, area, cargo y jefe inmediato, siempre de la misma empresa.
 const SQL_USUARIOS = `
   SELECT u.id AS id, u.cedula AS cedula, u.nombres AS nombres, u.apellidos AS apellidos,
          u.email AS correo, u.telefono AS telefono, r.codigo AS rol,
@@ -91,13 +107,13 @@ function aUsuario(fila: FilaUsuario): UsuarioDetalle {
   };
 }
 
-// Los caracteres comodin de LIKE se escapan: el texto buscado se toma literalmente
+// Los caracteres comodín de LIKE se escapan: el texto buscado se toma literalmente.
 function escaparLike(texto: string): string {
   return texto.replace(/[\\%_]/g, '\\$&');
 }
 
-// Condiciones de busqueda; cada palabra debe coincidir con el inicio de cedula, apellido, nombre o correo,
-// asi se aprovechan los indices (ix_usuarios_busqueda y los unicos)
+// Condiciones de búsqueda; cada palabra debe coincidir con el inicio de cédula, apellido, nombre o correo,
+// así se aprovechan los índices (ix_usuarios_busqueda y los únicos).
 function construirFiltros(filtros: FiltrosUsuarios): { donde: string; valores: ValorSql[] } {
   const condiciones: string[] = [];
   const valores: ValorSql[] = [];
@@ -131,7 +147,7 @@ export class UsuariosRepository implements IUsuariosRepository {
     filtros: FiltrosUsuarios,
   ): Promise<{ usuarios: UsuarioDetalle[]; total: number }> {
     const { donde, valores } = construirFiltros(filtros);
-    // Enteros ya validados por Zod: se escriben en la consulta porque LIMIT no admite parametros de forma fiable
+    // Enteros ya validados por Zod: se escriben en la consulta porque LIMIT no admite parámetros de forma fiable.
     const limite = Math.trunc(filtros.porPagina);
     const desplazamiento = (Math.trunc(filtros.pagina) - 1) * limite;
 
@@ -189,7 +205,7 @@ export class UsuariosRepository implements IUsuariosRepository {
   }
 
   async actualizar(empresaId: number, id: number, cambios: CambiosUsuario): Promise<void> {
-    // Las columnas son fijas: nunca se arma SQL con nombres que vengan del cliente
+    // Las columnas son fijas: nunca se arma SQL con nombres que vengan del cliente.
     const asignaciones: string[] = [];
     const valores: ValorSql[] = [];
     const agregar = (columna: string, valor: ValorSql | undefined): void => {
@@ -230,11 +246,76 @@ export class UsuariosRepository implements IUsuariosRepository {
     }
   }
 
+  // Actualiza la excepción individual y registra la modificación de forma atómica.
+  async configurarDiasVacaciones(
+    empresaId: number,
+    actorId: number,
+    id: number,
+    diasVacaciones: number | null,
+  ): Promise<number | null> {
+    try {
+      return await this.bd.transaccion(async (conexion) => {
+        const filasAnteriores = await conexion.consultar<FilaDiasVacaciones>(
+          `SELECT dias_vacaciones AS diasVacaciones
+           FROM usuarios
+           WHERE empresa_id = ? AND id = ?
+           FOR UPDATE`,
+          [empresaId, id],
+        );
+
+        if (filasAnteriores.length === 0) {
+          throw AppError.noEncontrado('La persona indicada no existe en este hospital');
+        }
+
+        const valorAnterior = filasAnteriores[0]!.diasVacaciones;
+        const antes = valorAnterior === null ? null : Number(valorAnterior);
+
+        await conexion.ejecutar(
+          `UPDATE usuarios
+           SET dias_vacaciones = ?
+           WHERE empresa_id = ? AND id = ?`,
+          [diasVacaciones, empresaId, id],
+        );
+
+        await conexion.ejecutar(
+          `INSERT INTO audit_log (
+             empresa_id, usuario_id, accion, entidad, entidad_id, detalle
+           ) VALUES (?, ?, 'ACTUALIZACION_DIAS_VACACIONES_EMPLEADO', 'USUARIO', ?, ?)`,
+          [
+            empresaId,
+            actorId,
+            id,
+            JSON.stringify({ antes, despues: diasVacaciones }),
+          ],
+        );
+
+        const [filaActualizada] = await conexion.consultar<FilaDiasVacaciones>(
+          `SELECT dias_vacaciones AS diasVacaciones
+           FROM usuarios
+           WHERE empresa_id = ? AND id = ?
+           LIMIT 1`,
+          [empresaId, id],
+        );
+
+        if (!filaActualizada) {
+          throw AppError.noEncontrado(
+            'No se pudo recuperar la configuración de vacaciones del empleado',
+          );
+        }
+
+        return filaActualizada.diasVacaciones === null
+          ? null
+          : Number(filaActualizada.diasVacaciones);
+      });
+    } catch (error) {
+      throw traducirErrorBD(error, MENSAJES_DIAS_VACACIONES);
+    }
+  }
+
   async darDeBaja(empresaId: number, id: number, fechaBaja: string | null): Promise<void> {
-    // Inactivo, con fecha de baja, y sin refresh token: ya no puede renovar su sesion
+    // Inactivo, con fecha de baja, y sin refresh token: ya no puede renovar su sesión.
     await this.bd.ejecutar(
-      `UPDATE usuarios SET estado = 'INACTIVO', fecha_baja = COALESCE(?, CURDATE()), token_id = NULL
-       WHERE empresa_id = ? AND id = ?`,
+      "UPDATE usuarios SET estado = 'INACTIVO', fecha_baja = COALESCE(?, CURDATE()), token_id = NULL WHERE empresa_id = ? AND id = ?",
       [fechaBaja, empresaId, id],
     );
   }

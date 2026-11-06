@@ -1,0 +1,19 @@
+/* General del dashboard: jerarquía de títulos de los paneles y utilidades compartidas. */
+.panel h2 {
+  margin-bottom: 8px;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+/* Texto solo para lectores de pantalla. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}

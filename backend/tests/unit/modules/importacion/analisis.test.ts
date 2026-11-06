@@ -316,3 +316,217 @@ describe('analizarTabla: ausentes', () => {
     expect(resultado.avisos[0]).toMatch(/Se darían de baja 3 de 4/);
   });
 });
+// Cobertura adicional de conversiones y validaciones de filas
+describe('conversiones: valores límite', () => {
+  it('cubre las fechas inválidas y los límites numéricos', () => {
+    expect(convertirFecha(new Date(Number.NaN))).toMatchObject({ ok: false });
+    expect(convertirFecha(0)).toMatchObject({ ok: false });
+    expect(convertirFecha(100001)).toMatchObject({ ok: false });
+    expect(convertirFecha(true)).toMatchObject({ ok: false });
+  });
+});
+
+describe('analizarTabla: validaciones adicionales', () => {
+  it('valida campos obligatorios vacíos y que superan su longitud máxima', () => {
+    const resultado = analizarTabla(
+      tabla([[
+        '0200000001',
+        null,
+        'A'.repeat(101),
+        'A'.repeat(151),
+        'B'.repeat(151),
+        '2021-05-10',
+      ]]),
+      {},
+      contexto(),
+    );
+
+    expect(resultado.filas[0]?.errores).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/Falta nombres/),
+        expect.stringMatching(/Apellidos supera/),
+        expect.stringMatching(/Área supera/),
+        expect.stringMatching(/Cargo supera/),
+      ]),
+    );
+  });
+
+  it('rechaza una cédula inválida dentro de una fila', () => {
+    const resultado = analizarTabla(
+      tabla([fila('ABC123')]),
+      {},
+      contexto(),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('ERROR');
+    expect(resultado.filas[0]?.errores).toEqual(
+      expect.arrayContaining([expect.stringMatching(/cédula solo debe tener números/i)]),
+    );
+  });
+
+  it('valida correo, teléfono, fecha de baja, rol y cédula del jefe', () => {
+    const encabezados = [
+      ...ENCABEZADOS,
+      'Correo',
+      'Teléfono',
+      'Fecha de baja',
+      'Rol',
+      'Cédula del jefe',
+    ];
+
+    const resultado = analizarTabla(
+      tabla([[
+        ...fila('0200000001'),
+        new Date(Date.UTC(2026, 0, 1)),
+        'ABC',
+        '31/02/2026',
+        'Rol inexistente',
+        'ABC',
+      ]], encabezados),
+      {},
+      contexto(),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('ERROR');
+    expect(resultado.filas[0]?.errores.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('rechaza una fecha de ingreso inválida', () => {
+    const resultado = analizarTabla(
+      tabla([fila('0200000001', 'Emergencia', 'Medico', 'ayer')]),
+      {},
+      contexto(),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('ERROR');
+    expect(resultado.filas[0]?.errores).toEqual(
+      expect.arrayContaining([expect.stringMatching(/Fecha de ingreso/)]),
+    );
+  });
+
+  it('conserva sin cambios a una persona inactiva que ya tiene fecha de baja', () => {
+    const resultado = analizarTabla(
+      tabla(
+        [[...fila('0102030405'), '2026-01-01']],
+        [...ENCABEZADOS, 'Fecha de baja'],
+      ),
+      {},
+      contexto({
+        usuarios: [
+          usuarioExistente({
+            estado: 'INACTIVO',
+            fechaBaja: '2026-01-01',
+          }),
+        ],
+      }),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('SIN_CAMBIOS');
+    expect(resultado.plan.actualizar).toHaveLength(0);
+  });
+
+  it('registra el cambio de jefe de una persona existente', () => {
+    const resultado = analizarTabla(
+      tabla(
+        [[...fila('0102030405'), '0200000002']],
+        [...ENCABEZADOS, 'Cédula del jefe'],
+      ),
+      {},
+      contexto({
+        usuarios: [
+          usuarioExistente(),
+          usuarioExistente({
+            id: 11,
+            cedula: '0200000002',
+            correo: null,
+          }),
+        ],
+      }),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('ACTUALIZAR');
+    expect(resultado.plan.jefes).toEqual([
+      { cedula: '0102030405', cedulaJefe: '0200000002' },
+    ]);
+  });
+
+  it('convierte valores Date de campos de texto antes de validarlos', () => {
+    const resultado = analizarTabla(
+      tabla(
+        [[...fila('0200000001'), new Date(Date.UTC(2026, 0, 1))]],
+        [...ENCABEZADOS, 'Correo'],
+      ),
+      {},
+      contexto(),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('ERROR');
+    expect(resultado.filas[0]?.errores).toEqual(
+      expect.arrayContaining([expect.stringMatching(/correo/i)]),
+    );
+  });
+});
+
+it('conserva un teléfono válido en el plan de creación', () => {
+  const resultado = analizarTabla(
+    tabla(
+      [[...fila('0200000001'), '+593 99 123 4567']],
+      [...ENCABEZADOS, 'Teléfono'],
+    ),
+    {},
+    contexto(),
+  );
+
+  expect(resultado.filas[0]?.accion).toBe('CREAR');
+  expect(resultado.plan.crear[0]?.telefono).toBe('+593 99 123 4567');
+});
+
+describe('analizarTabla: actualización de campos opcionales', () => {
+  it('cubre cambios de correo, teléfono y cargo en una persona existente', () => {
+    const existente = usuarioExistente({
+      fechaIngreso: '2021-05-10',
+      telefono: '0991111111',
+    });
+
+    const resultado = analizarTabla(
+      tabla(
+        [[
+          ...fila('0102030405', 'Emergencia', 'Enfermera'),
+          'nuevo@hospital.test',
+          '+593 99 123 4567',
+        ]],
+        [...ENCABEZADOS, 'Correo', 'Teléfono'],
+      ),
+      {},
+      contexto({ usuarios: [existente] }),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('ACTUALIZAR');
+    expect(resultado.plan.actualizar[0]?.cambios).toMatchObject({
+      correo: 'nuevo@hospital.test',
+      telefono: '+593 99 123 4567',
+      cargoId: 2,
+    });
+  });
+
+  it('trata una celda de correo vacía como dato opcional no informado', () => {
+    const existente = usuarioExistente({
+      nombres: 'Rosa',
+      apellidos: 'Mena',
+      fechaIngreso: '2021-05-10',
+      telefono: '0991111111',
+    });
+
+    const resultado = analizarTabla(
+      tabla(
+        [[...fila('0102030405'), '   ', '0991111111']],
+        [...ENCABEZADOS, 'Correo', 'Teléfono'],
+      ),
+      {},
+      contexto({ usuarios: [existente] }),
+    );
+
+    expect(resultado.filas[0]?.accion).toBe('SIN_CAMBIOS');
+    expect(resultado.plan.actualizar).toHaveLength(0);
+  });
+});

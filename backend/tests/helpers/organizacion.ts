@@ -1,3 +1,4 @@
+
 // Repositorio de organizacion en memoria, para probar sin MySQL. Reproduce las reglas de la base:
 // nombres unicos por hospital y registros en uso (o con subareas) que no se pueden eliminar.
 import type {
@@ -78,6 +79,7 @@ export function crearOrganizacionEnMemoria(): {
           jefe,
           parentId: datos.parentId,
           procesoId: datos.procesoId,
+          diasVacaciones: null,
         },
       });
       return Promise.resolve(siguienteId);
@@ -100,6 +102,15 @@ export function crearOrganizacionEnMemoria(): {
         }
       }
       return Promise.resolve();
+    },
+
+    configurarDiasVacacionesArea: (empresaId, _actorId, id, diasVacaciones) => {
+      const guardada = areas.find((a) => a.empresaId === empresaId && a.area.id === id);
+      if (!guardada) {
+        return rechazar(AppError.noEncontrado('El area no existe'));
+      }
+      guardada.area.diasVacaciones = diasVacaciones;
+      return Promise.resolve(diasVacaciones);
     },
 
     eliminarArea: (empresaId, id) => {

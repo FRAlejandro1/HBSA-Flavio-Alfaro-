@@ -1,4 +1,4 @@
-// Pruebas de la app completa con Supertest: seguridad, CORS y rutas base.
+// Pruebas de la app completa con Supertest: seguridad, CORS, CSRF y rutas base.
 // No necesitan MySQL ni Redis porque las conexiones se abren solo al usarlas.
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -41,5 +41,25 @@ describe('app', () => {
     const cuerpo = respuesta.body as CuerpoError;
     expect(respuesta.status).toBe(404);
     expect(cuerpo.codigo).toBe('NO_ENCONTRADO');
+  });
+
+  it('exige CSRF en metodos que modifican recursos bajo /api', async () => {
+    const respuesta = await request(app).post('/api/auth/refresh');
+    const cuerpo = respuesta.body as CuerpoError;
+
+    expect(respuesta.status).toBe(403);
+    expect(cuerpo.codigo).toBe('PROHIBIDO');
+  });
+
+  it('omite CSRF en la ruta base de importacion', async () => {
+    const respuesta = await request(app).post('/api/importacion');
+
+    expect(respuesta.status).not.toBe(403);
+  });
+
+  it('omite CSRF en las subrutas de importacion', async () => {
+    const respuesta = await request(app).post('/api/importacion/personal');
+
+    expect(respuesta.status).not.toBe(403);
   });
 });

@@ -1,12 +1,14 @@
+
 // Traduce HTTP a llamadas del service. El hospital sale siempre del token (obtenerEmpresaId),
 // nunca del cuerpo, la query o la URL. Sin reglas de negocio.
-import type { Request, RequestHandler } from 'express';
+import type { RequestHandler } from 'express';
 import { obtenerEmpresaId } from '../../middlewares/multitenant';
-import { AppError } from '../../shared/errors/AppError';
+import { exigirUsuario, leerIdParametro } from '../../shared/http/peticion';
 import type { OrganizacionService } from './organizacion.service';
 import type {
   ActualizarAreaEntrada,
   ActualizarCargoEntrada,
+  ConfigurarDiasVacacionesAreaEntrada,
   CrearAreaEntrada,
   CrearCargoEntrada,
 } from './organizacion.validators';
@@ -17,26 +19,12 @@ export interface OrganizacionController {
   listarArbolAreas: RequestHandler;
   crearArea: RequestHandler;
   actualizarArea: RequestHandler;
+  configurarDiasVacacionesArea: RequestHandler;
   eliminarArea: RequestHandler;
   listarCargos: RequestHandler;
   crearCargo: RequestHandler;
   actualizarCargo: RequestHandler;
   eliminarCargo: RequestHandler;
-}
-
-// validate ya convirtio el id en numero; aqui solo se lee con el tipo correcto
-function leerId(req: Request): number {
-  const bruto: unknown = req.params.id;
-  const id =
-    typeof bruto === 'number'
-      ? bruto
-      : typeof bruto === 'string'
-        ? Number.parseFloat(bruto)
-        : Number.NaN;
-  if (Number.isNaN(id)) {
-    throw AppError.validacion('Identificador invalido');
-  }
-  return id;
 }
 
 export function crearOrganizacionController(servicio: OrganizacionService): OrganizacionController {
@@ -61,14 +49,24 @@ export function crearOrganizacionController(servicio: OrganizacionService): Orga
     actualizarArea: async (req, res) => {
       const area = await servicio.actualizarArea(
         obtenerEmpresaId(req),
-        leerId(req),
+        leerIdParametro(req),
         req.body as ActualizarAreaEntrada,
       );
       res.json({ area });
     },
 
+    configurarDiasVacacionesArea: async (req, res) => {
+      const area = await servicio.configurarDiasVacacionesArea(
+        obtenerEmpresaId(req),
+        exigirUsuario(req).id,
+        leerIdParametro(req),
+        (req.body as ConfigurarDiasVacacionesAreaEntrada).diasVacaciones,
+      );
+      res.json({ area });
+    },
+
     eliminarArea: async (req, res) => {
-      await servicio.eliminarArea(obtenerEmpresaId(req), leerId(req));
+      await servicio.eliminarArea(obtenerEmpresaId(req), leerIdParametro(req));
       res.status(204).end();
     },
 
@@ -84,14 +82,14 @@ export function crearOrganizacionController(servicio: OrganizacionService): Orga
     actualizarCargo: async (req, res) => {
       const cargo = await servicio.actualizarCargo(
         obtenerEmpresaId(req),
-        leerId(req),
+        leerIdParametro(req),
         req.body as ActualizarCargoEntrada,
       );
       res.json({ cargo });
     },
 
     eliminarCargo: async (req, res) => {
-      await servicio.eliminarCargo(obtenerEmpresaId(req), leerId(req));
+      await servicio.eliminarCargo(obtenerEmpresaId(req), leerIdParametro(req));
       res.status(204).end();
     },
   };

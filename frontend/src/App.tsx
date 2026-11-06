@@ -3,11 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Variables } from '@/config/Variables';
 import { LoginPage } from '@/features/auth/LoginPage';
 import {
+  cerrarSesion,
   restaurarSesion,
 } from '@/features/auth/auth.api';
 import type { UsuarioAutenticado } from '@/features/auth/auth.types';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
-import { SuperadminPage } from '@/features/dashboard/SuperadminPage';
+import { SuperadminPage } from '@/features/superadmin/SuperadminPage';
 import '@/styles/app.css';
 
 type Tema = 'claro' | 'oscuro' | 'alto-contraste';
@@ -132,9 +133,15 @@ function Aplicacion() {
     );
   }
 
-  function cerrarSesionLocal() {
-    setUsuario(null);
-    setMensaje('La sesión se ha cerrado.');
+  async function cerrarSesionAplicacion() {
+    try {
+      await cerrarSesion();
+      setMensaje('La sesión se ha cerrado.');
+    } catch {
+      setMensaje('No se pudo confirmar el cierre de sesión en el servidor.');
+    } finally {
+      setUsuario(null);
+    }
   }
 
   if (comprobandoSesion) {
@@ -153,7 +160,7 @@ function Aplicacion() {
         usuario.rol === 'SUPERADMIN' ? (
           <SuperadminPage
             usuario={usuario}
-            onLogout={cerrarSesionLocal}
+            onLogout={() => { void cerrarSesionAplicacion(); }}
             tema={tema}
             cambiarTema={cambiarTema}
             anunciar={anunciar}
@@ -161,7 +168,7 @@ function Aplicacion() {
         ) : (
           <DashboardPage
             usuario={usuario}
-            onLogout={cerrarSesionLocal}
+            onLogout={() => { void cerrarSesionAplicacion(); }}
             tema={tema}
             cambiarTema={cambiarTema}
             anunciar={anunciar}

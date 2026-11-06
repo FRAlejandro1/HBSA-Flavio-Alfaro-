@@ -1,0 +1,187 @@
+/* Aviso de aprobación: entra de izquierda a derecha. */
+.dashboard-notice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  margin-top: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--app-border);
+  border-radius: 13px;
+  background: var(--panel-bg);
+  box-shadow: var(--app-shadow);
+}
+
+.dashboard-notice-entrada {
+  animation: aviso-entrada 0.45s ease-out both;
+}
+
+@keyframes aviso-entrada {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dashboard-notice-icon {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--app-border);
+  border-radius: 50%;
+  background: var(--app-primary-soft);
+  color: var(--app-primary);
+  font-weight: 700;
+}
+
+.dashboard-notice-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-notice-content strong {
+  display: block;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-notice-content p {
+  margin: 4px 0 0;
+  color: var(--app-muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-notice-action {
+  flex: 0 0 auto;
+}
+
+/* Encabezado de cada tarjeta. */
+.panel-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.panel-heading .panel-kicker { margin: 0; }
+.panel-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+:root[data-tema='alto-contraste'] .panel-icon { border: 1px solid white; background: black; color: white; }
+
+/* Tarjetas de saldo: la de vacaciones es más ancha, como en el diseño. */
+.module-grid {
+  display: grid;
+  align-items: stretch;
+  gap: 17px;
+}
+
+.module-grid > .panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.module-grid-saldos {
+  grid-template-columns:
+    minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.saldo-cuerpo {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.saldo-cifra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.saldo-unidad {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.saldo-barra {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--app-border);
+}
+
+.saldo-barra-corta {
+  width: 70%;
+}
+
+.saldo-leyenda {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.saldo-chip {
+  align-self: flex-start;
+}
+
+@media (max-width: 1100px) {
+  .module-grid-saldos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .module-grid-saldos > .panel:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-notice {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .dashboard-notice-icon {
+    flex-basis: 32px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .dashboard-notice-content {
+    flex-basis: calc(100% - 45px);
+  }
+
+  .dashboard-notice-action {
+    margin-left: 42px;
+  }
+
+  .module-grid-saldos {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .module-grid-saldos > .panel:first-child {
+    grid-column: auto;
+  }
+}

@@ -1,4 +1,4 @@
-// Endpoints de usuarios y los roles que pueden usarlos. Sin logica.
+﻿// Endpoints de usuarios y los roles que pueden usarlos. Sin logica.
 // El CSRF de los metodos que cambian estado lo aplica app.ts a toda la API.
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
@@ -10,6 +10,7 @@ import type { UsuariosController } from './usuarios.controller';
 import {
   esquemaActualizarUsuario,
   esquemaBaja,
+  esquemaConfigurarDiasVacaciones,
   esquemaCrearUsuario,
   esquemaFiltrosUsuarios,
 } from './usuarios.validators';
@@ -24,7 +25,7 @@ export function crearUsuariosRouter(deps: DependenciasRouterUsuarios): Router {
   const router = Router();
   const c = deps.controller;
 
-  // Todo el modulo exige sesion, filtra por el hospital del token y es de Talento Humano y el administrador
+  // Todo el modulo exige sesion, filtra por el hospital del token y es de Talento Humano y el administrador.
   router.use(deps.autenticar, multitenant, authorizeRole('SUPERADMIN', 'TALENTO_HUMANO'));
 
   router.get('/', validate({ query: esquemaFiltrosUsuarios }), c.listar);
@@ -35,6 +36,15 @@ export function crearUsuariosRouter(deps: DependenciasRouterUsuarios): Router {
     validate({ params: esquemaId, body: esquemaActualizarUsuario }),
     c.actualizar,
   );
+
+  // La excepción individual de vacaciones solo puede configurarla SUPERADMIN.
+  router.patch(
+    '/:id/vacaciones',
+    authorizeRole('SUPERADMIN'),
+    validate({ params: esquemaId, body: esquemaConfigurarDiasVacaciones }),
+    c.configurarDiasVacaciones,
+  );
+
   router.post('/:id/baja', validate({ params: esquemaId, body: esquemaBaja }), c.darDeBaja);
   router.post('/:id/reactivar', validate({ params: esquemaId }), c.reactivar);
 

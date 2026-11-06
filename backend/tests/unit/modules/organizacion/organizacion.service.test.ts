@@ -1,5 +1,5 @@
 // Pruebas del service de organizacion con el repositorio en memoria.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DatosArea } from '../../../../src/modules/organizacion/organizacion.dominio';
 import { OrganizacionService } from '../../../../src/modules/organizacion/organizacion.service';
 import { crearOrganizacionEnMemoria } from '../../../helpers/organizacion';
@@ -80,6 +80,41 @@ describe('areas', () => {
     });
   });
 
+  it('configura los dias de vacaciones de un area', async () => {
+    const { servicio } = crearEscenario();
+    const creada = await servicio.crearArea(5, datosArea('Emergencia'));
+
+    const area = await servicio.configurarDiasVacacionesArea(5, 10, creada.id, 25.5);
+
+    expect(area).toMatchObject({
+      id: creada.id,
+      diasVacaciones: 25.5,
+    });
+  });
+
+  it('restablece la herencia institucional al configurar dias en null', async () => {
+    const { servicio } = crearEscenario();
+    const creada = await servicio.crearArea(5, datosArea('Emergencia'));
+
+    await servicio.configurarDiasVacacionesArea(5, 10, creada.id, 25.5);
+    const area = await servicio.configurarDiasVacacionesArea(5, 10, creada.id, null);
+
+    expect(area.diasVacaciones).toBeNull();
+  });
+
+  it('no configura dias de un area inexistente o de otro hospital', async () => {
+    const { servicio } = crearEscenario();
+    const ajena = await servicio.crearArea(6, datosArea('Quirofano'));
+
+    await expect(
+      servicio.configurarDiasVacacionesArea(5, 10, 9999, 25.5),
+    ).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
+
+    await expect(
+      servicio.configurarDiasVacacionesArea(5, 10, ajena.id, 25.5),
+    ).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
+  });
+
   it('no elimina un area inexistente', async () => {
     const { servicio } = crearEscenario();
     await expect(servicio.eliminarArea(5, 9999)).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
@@ -90,6 +125,41 @@ describe('areas', () => {
     const area = await servicio.crearArea(5, datosArea('Emergencia'));
     areasEnUso.add(area.id);
     await expect(servicio.eliminarArea(5, area.id)).rejects.toMatchObject({ codigo: 'CONFLICTO' });
+  });
+
+  it('convierte AREA_NO_ENCONTRADA del repositorio al configurar vacaciones', async () => {
+    const { servicio, repositorio } = crearEscenario();
+    const area = await servicio.crearArea(5, datosArea('Emergencia'));
+    const error = new Error('AREA_NO_ENCONTRADA');
+
+    vi.spyOn(repositorio, 'configurarDiasVacacionesArea')
+      .mockRejectedValueOnce(error);
+
+    await expect(
+      servicio.configurarDiasVacacionesArea(5, 10, area.id, 25),
+    ).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
+  });
+
+  it('propaga otros errores del repositorio al configurar vacaciones', async () => {
+    const { servicio, repositorio } = crearEscenario();
+    const area = await servicio.crearArea(5, datosArea('Emergencia'));
+    const error = new Error('ERROR_INESPERADO');
+
+    vi.spyOn(repositorio, 'configurarDiasVacacionesArea')
+      .mockRejectedValueOnce(error);
+
+    await expect(
+      servicio.configurarDiasVacacionesArea(5, 10, area.id, 25),
+    ).rejects.toBe(error);
+  });
+
+  it('rechaza mover un área a un padre inexistente', async () => {
+    const { servicio } = crearEscenario();
+    const area = await servicio.crearArea(5, datosArea('Emergencia'));
+
+    await expect(
+      servicio.actualizarArea(5, area.id, { parentId: 9999 }),
+    ).rejects.toMatchObject({ codigo: 'REGLA_DE_NEGOCIO' });
   });
 });
 
@@ -247,5 +317,13 @@ describe('cargos', () => {
   it('no elimina un cargo inexistente', async () => {
     const { servicio } = crearEscenario();
     await expect(servicio.eliminarCargo(5, 9999)).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
+  });
+
+  it('rechaza actualizar un cargo inexistente', async () => {
+    const { servicio } = crearEscenario();
+
+    await expect(
+      servicio.actualizarCargo(5, 9999, { funciones: 'Actualizar' }),
+    ).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
   });
 });

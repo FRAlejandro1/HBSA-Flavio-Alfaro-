@@ -55,4 +55,46 @@ describe('LectorCsv', () => {
   it('rechaza un archivo vacio', async () => {
     await expect(leer('   \n')).rejects.toMatchObject({ codigo: 'VALIDACION' });
   });
+
+  it('ignora separadores dentro de encabezados entrecomillados y procesa el ultimo registro sin salto de linea', async () => {
+    const tabla = await leer('"Nombre, completo";Edad\n"Ana, Pérez";30');
+
+    expect(tabla.encabezados).toEqual(['Nombre, completo', 'Edad']);
+    expect(tabla.filas).toEqual([['Ana, Pérez', '30']]);
+  });
+
+  it('omite lineas iniciales vacias antes de detectar el encabezado', async () => {
+    const tabla = await leer('\n   \nCedula;Nombres\n0102030405;Ana');
+
+    expect(tabla.encabezados).toEqual(['Cedula', 'Nombres']);
+    expect(tabla.filas).toEqual([['0102030405', 'Ana']]);
+  });
+
+  it('detecta tabulaciones como separador', async () => {
+    const tabla = await leer('Cedula\tNombres\n0102030405\tAna');
+
+    expect(tabla.encabezados).toEqual(['Cedula', 'Nombres']);
+    expect(tabla.filas).toEqual([['0102030405', 'Ana']]);
+  });
+
+  it('convierte en Error los rechazos que no son instancias de Error', async () => {
+    const contenido = Buffer.from([0xff]);
+    contenido.toString = () => {
+      const errorNoEstándar = new Error('error de decodificacion');
+      Object.setPrototypeOf(errorNoEstándar, null);
+      Object.defineProperties(errorNoEstándar, {
+        toString: {
+          value: () => 'error de decodificacion',
+        },
+        [Symbol.toPrimitive]: {
+          value: () => 'error de decodificacion',
+        },
+      });
+      throw errorNoEstándar;
+    };
+
+    await expect(lector.leer(contenido)).rejects.toMatchObject({
+      message: 'error de decodificacion',
+    });
+  });
 });

@@ -241,6 +241,90 @@ describe('areas', () => {
     expect(respuesta.status).toBe(404);
   });
 
+  it('el SUPERADMIN configura los dias de vacaciones de un area', async () => {
+    const { app, idAreaPropia } = await crearEscenario();
+    const respuesta = await autorizar(
+      request(app).patch(`${BASE}/areas/${idAreaPropia}/vacaciones`),
+      await tokenDe('SUPERADMIN'),
+    ).send({ diasVacaciones: 25.5 });
+
+    expect(respuesta.status).toBe(200);
+    expect((respuesta.body as { area: { diasVacaciones: number | null } }).area).toMatchObject({ diasVacaciones: 25.5 });
+  });
+
+  it('el SUPERADMIN restablece la herencia institucional del area', async () => {
+    const { app, idAreaPropia } = await crearEscenario();
+    const token = await tokenDe('SUPERADMIN');
+
+    await autorizar(
+      request(app).patch(`${BASE}/areas/${idAreaPropia}/vacaciones`),
+      token,
+    ).send({ diasVacaciones: 25.5 });
+
+    const respuesta = await autorizar(
+      request(app).patch(`${BASE}/areas/${idAreaPropia}/vacaciones`),
+      token,
+    ).send({ diasVacaciones: null });
+
+    expect(respuesta.status).toBe(200);
+    expect((respuesta.body as { area: { diasVacaciones: number | null } }).area).toMatchObject({ diasVacaciones: null });
+  });
+
+  it('rechaza la configuracion de dias de vacaciones para roles no autorizados', async () => {
+    const { app, idAreaPropia } = await crearEscenario();
+
+    for (const rol of ['EMPLEADO', 'TALENTO_HUMANO', 'JEFE_AREA'] as const) {
+      const respuesta = await autorizar(
+        request(app).patch(`${BASE}/areas/${idAreaPropia}/vacaciones`),
+        await tokenDe(rol),
+      ).send({ diasVacaciones: 25 });
+
+      expect(respuesta.status).toBe(403);
+    }
+  });
+
+  it('no permite configurar dias de vacaciones de un area de otro hospital', async () => {
+    const { app, idAreaAjena } = await crearEscenario();
+    const respuesta = await autorizar(
+      request(app).patch(`${BASE}/areas/${idAreaAjena}/vacaciones`),
+      await tokenDe('SUPERADMIN'),
+    ).send({ diasVacaciones: 25 });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('rechaza valores invalidos y campos adicionales en la configuracion', async () => {
+    const { app, idAreaPropia } = await crearEscenario();
+    const token = await tokenDe('SUPERADMIN');
+
+    for (const cuerpo of [
+      { diasVacaciones: 0 },
+      { diasVacaciones: -1 },
+      { diasVacaciones: 367 },
+      { diasVacaciones: 25.555 },
+      { diasVacaciones: '25' },
+      { diasVacaciones: 25, empresaId: 6 },
+      {},
+    ]) {
+      const respuesta = await autorizar(
+        request(app).patch(`${BASE}/areas/${idAreaPropia}/vacaciones`),
+        token,
+      ).send(cuerpo);
+
+      expect(respuesta.status).toBe(400);
+    }
+  });
+
+  it('exige CSRF para configurar dias de vacaciones', async () => {
+    const { app, idAreaPropia } = await crearEscenario();
+    const respuesta = await request(app)
+      .patch(`${BASE}/areas/${idAreaPropia}/vacaciones`)
+      .set('Authorization', `Bearer ${await tokenDe('SUPERADMIN')}`)
+      .send({ diasVacaciones: 25 });
+
+    expect(respuesta.status).toBe(403);
+  });
+
   it('responde 400 si la actualizacion no trae campos', async () => {
     const { app, idAreaPropia } = await crearEscenario();
     const respuesta = await autorizar(

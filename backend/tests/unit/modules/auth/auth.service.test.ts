@@ -164,6 +164,49 @@ describe('AuthService.refrescar', () => {
       codigo: 'NO_AUTENTICADO',
     });
   });
+
+  it('rechaza el login si las credenciales son validas pero no encuentra el perfil', async () => {
+    const { servicio } = crearEscenario();
+    const repositorio = (
+      servicio as unknown as {
+        deps: {
+          repositorio: { buscarPerfil: () => Promise<null> };
+        };
+      }
+    ).deps.repositorio;
+
+    repositorio.buscarPerfil = () => Promise.resolve(null);
+
+    await expect(servicio.login(jefe.correo, CLAVE)).rejects.toMatchObject({
+      codigo: 'NO_AUTENTICADO',
+      message: 'Correo o clave incorrectos',
+    });
+  });
+
+  it('utiliza los valores predeterminados cuando no se inyectan generarId ni ahora', async () => {
+    const { repositorio, usuarios } = crearRepositorioEnMemoria([jefe, sinCuenta, inactivo]);
+    const { sesiones } = crearSesionesEnMemoria();
+    const { claves } = crearClavesFalsas();
+
+    const servicio = new AuthService({
+      repositorio,
+      tokens: tokensJwt,
+      claves,
+      sesiones,
+      ttlAccesoSegundos: 900,
+    });
+
+    const resultado = await servicio.login(jefe.correo, CLAVE);
+
+    expect(usuarios.get(7)?.tokenId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    const usuario = await tokensJwt.verificarAcceso(resultado.accessToken);
+    await servicio.cerrarSesion(usuario);
+
+    expect(usuarios.get(7)?.tokenId).toBeNull();
+  });
 });
 
 describe('AuthService.cerrarSesion y obtenerPerfil', () => {

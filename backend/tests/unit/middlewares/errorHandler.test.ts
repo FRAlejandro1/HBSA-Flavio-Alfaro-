@@ -1,7 +1,7 @@
-// Pruebas de errorHandler y rutaNoEncontrada sobre una app minima con Supertest.
+﻿// Pruebas de errorHandler y rutaNoEncontrada sobre una app minima con Supertest.
 import express from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { errorHandler, rutaNoEncontrada } from '../../../src/middlewares/errorHandler';
 import { AppError } from '../../../src/shared/errors/AppError';
@@ -12,25 +12,34 @@ interface CuerpoError {
   detalles?: unknown;
 }
 
-// App con una ruta por cada tipo de error que el handler debe traducir
+// App con una ruta por cada tipo de error que el handler debe traducir.
 function crearAppDePrueba(): express.Express {
   const app = express();
   app.use(express.json());
+
   app.get('/prohibido', () => {
     throw AppError.prohibido('No puedes cancelar esta solicitud');
   });
+
   app.get('/con-detalles', () => {
     throw AppError.reglaDeNegocio('Saldo insuficiente', { disponible: 3 });
   });
+
   app.get('/zod', () => {
     z.object({ cedula: z.string() }).parse({});
   });
+
   app.get('/inesperado', () => {
     throw new Error('clave interna que no debe filtrarse');
   });
+  app.get('/inesperado-no-error', (_req, _res, next) => {
+    next('fallo interno no estandar');
+  });
+
   app.post('/json', (_req, res) => {
     res.json({ ok: true });
   });
+
   app.use(rutaNoEncontrada);
   app.use(errorHandler);
   return app;
@@ -42,13 +51,18 @@ describe('errorHandler', () => {
   it('traduce un AppError a su estado y codigo', async () => {
     const respuesta = await request(app).get('/prohibido');
     const cuerpo = respuesta.body as CuerpoError;
+
     expect(respuesta.status).toBe(403);
-    expect(cuerpo).toEqual({ codigo: 'PROHIBIDO', mensaje: 'No puedes cancelar esta solicitud' });
+    expect(cuerpo).toEqual({
+      codigo: 'PROHIBIDO',
+      mensaje: 'No puedes cancelar esta solicitud',
+    });
   });
 
   it('incluye los detalles cuando existen', async () => {
     const respuesta = await request(app).get('/con-detalles');
     const cuerpo = respuesta.body as CuerpoError;
+
     expect(respuesta.status).toBe(422);
     expect(cuerpo.detalles).toEqual({ disponible: 3 });
   });
@@ -56,9 +70,12 @@ describe('errorHandler', () => {
   it('traduce un error de Zod a 400 con el campo afectado', async () => {
     const respuesta = await request(app).get('/zod');
     const cuerpo = respuesta.body as CuerpoError;
+
     expect(respuesta.status).toBe(400);
     expect(cuerpo.codigo).toBe('VALIDACION');
-    expect(cuerpo.detalles).toEqual([{ campo: 'cedula', mensaje: expect.any(String) as string }]);
+    expect(cuerpo.detalles).toEqual([
+      { campo: 'cedula', mensaje: expect.any(String) as string },
+    ]);
   });
 
   it('responde 400 ante un JSON mal formado', async () => {
@@ -67,6 +84,7 @@ describe('errorHandler', () => {
       .set('Content-Type', 'application/json')
       .send('{"roto":');
     const cuerpo = respuesta.body as CuerpoError;
+
     expect(respuesta.status).toBe(400);
     expect(cuerpo.codigo).toBe('VALIDACION');
   });
@@ -74,15 +92,49 @@ describe('errorHandler', () => {
   it('responde 500 generico sin filtrar el mensaje interno', async () => {
     const respuesta = await request(app).get('/inesperado');
     const cuerpo = respuesta.body as CuerpoError;
+
     expect(respuesta.status).toBe(500);
     expect(cuerpo.codigo).toBe('ERROR_INTERNO');
     expect(JSON.stringify(cuerpo)).not.toContain('clave interna');
   });
 
+  it('registra correctamente errores que no son instancias de Error', async () => {
+    const respuesta = await request(app).get('/inesperado-no-error');
+    const cuerpo = respuesta.body as CuerpoError;
+
+    expect(respuesta.status).toBe(500);
+    expect(cuerpo.codigo).toBe('ERROR_INTERNO');
+    expect(cuerpo.mensaje).toBe('Ocurrio un error inesperado');
+  });
+
   it('responde 404 en rutas que no existen', async () => {
     const respuesta = await request(app).get('/no-existe');
     const cuerpo = respuesta.body as CuerpoError;
+
     expect(respuesta.status).toBe(404);
     expect(cuerpo.codigo).toBe('NO_ENCONTRADO');
   });
+
+  it('no intenta responder nuevamente cuando los encabezados ya fueron enviados', () => {
+    const error = new Error('La respuesta ya fue iniciada');
+    const siguiente = vi.fn();
+    const respuesta = {
+      headersSent: true,
+      status: vi.fn(),
+      json: vi.fn(),
+    };
+
+    errorHandler(
+      error,
+      { method: 'GET', originalUrl: '/respuesta-enviada' } as never,
+      respuesta as never,
+      siguiente,
+    );
+
+    expect(siguiente).toHaveBeenCalledOnce();
+    expect(siguiente).toHaveBeenCalledWith(error);
+    expect(respuesta.status).not.toHaveBeenCalled();
+    expect(respuesta.json).not.toHaveBeenCalled();
+  });
 });
+

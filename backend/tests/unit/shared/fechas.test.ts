@@ -83,6 +83,15 @@ describe('calcularFechaFin', () => {
   it('rechaza cantidades no positivas', () => {
     expect(() => calcularFechaFin('2026-10-05', 0, sinFeriados)).toThrow(RangeError);
   });
+
+  it('rechaza una búsqueda que supera el límite de días', () => {
+    const todosFeriados = new Set<string>();
+    for (let i = 0; i < 4000; i++) {
+      todosFeriados.add(sumarDias('2026-10-05', i));
+    }
+
+    expect(() => calcularFechaFin('2026-10-05', 1, todosFeriados)).toThrow(RangeError);
+  });
 });
 
 describe('esProgramada', () => {
@@ -93,5 +102,10 @@ describe('esProgramada', () => {
 
   it('no es programada con menos de 7 dias', () => {
     expect(esProgramada('2026-10-08', '2026-10-14')).toBe(false);
+  });
+
+  it('rechaza un umbral negativo o no entero', () => {
+    expect(() => esProgramada('2026-10-08', '2026-10-15', -1)).toThrow(RangeError);
+    expect(() => esProgramada('2026-10-08', '2026-10-15', 1.5)).toThrow(RangeError);
   });
 });

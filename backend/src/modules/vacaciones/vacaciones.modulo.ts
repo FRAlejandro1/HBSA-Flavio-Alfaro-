@@ -1,13 +1,12 @@
 
- // Composición del módulo: conecta la base de datos real y devuelve el router junto con el servicio.
-// Agrupa las solicitudes de vacaciones y la configuración de días, exclusiva de SUPERADMIN.
+// Composición del módulo de vacaciones: conecta la base de datos,
+// la configuración institucional, los periodos y las solicitudes.
 import { Router } from 'express';
 import { obtenerBaseDatos } from '../../config/database';
-import { env } from '../../config/env';
 import { authenticate } from '../../middlewares/authenticate';
 import { calcularDiasLaborables } from '../../shared/utils/fechas';
-import { crearConfiguracionVacacionesController } from './vacaciones.configuracion.controller';
-import { crearConfiguracionVacacionesRouter } from './vacaciones.configuracion.routes';
+import { AppError } from '../../shared/errors/AppError';
+import { ConfiguracionInstitucionalRepository } from '../configuracion-institucional/configuracion-institucional.repository';
 import { crearVacacionesController } from './vacaciones.controller';
 import { PeriodosRepository } from './vacaciones.periodos.repository';
 import { PeriodosService } from './vacaciones.periodos.service';
@@ -23,30 +22,48 @@ export interface ModuloVacaciones {
 export function crearModuloVacaciones(): ModuloVacaciones {
   const bd = obtenerBaseDatos();
 
+  // Comparte el acceso a la configuración institucional sin depender de su módulo HTTP.
+  const configuracionInstitucional = new ConfiguracionInstitucionalRepository(bd);
+
+  // Los periodos utilizan exclusivamente los días anuales configurados para el hospital.
   const periodos = new PeriodosService({
     repositorio: new PeriodosRepository(bd),
-    diasPorDefecto: env.DIAS_VACACIONES_ANUALES,
+    obtenerDiasVacacionesAnuales: async (empresaId) => {
+      const configuracion = await configuracionInstitucional.obtener(empresaId);
+
+      if (configuracion === null) {
+        throw AppError.reglaDeNegocio(
+          `No existe configuración institucional para el hospital ${String(empresaId)}`,
+        );
+      }
+
+      return configuracion.diasVacacionesAnuales;
+    },
   });
 
+  // El servicio obtiene las reglas vigentes por hospital para cada nueva operación.
   const servicio = new VacacionesService({
     repositorio: new VacacionesRepository(bd),
+    obtenerConfiguracionInstitucional: async (empresaId) => {
+      const configuracion = await configuracionInstitucional.obtener(empresaId);
+
+      if (configuracion === null) {
+        return null;
+      }
+
+      return {
+        plazoHoras: configuracion.plazoHoras,
+        diasVacacionesAnuales: configuracion.diasVacacionesAnuales,
+        zonaHoraria: configuracion.zonaHoraria,
+        diasAnticipacionVacaciones: configuracion.diasAnticipacionVacaciones,
+      };
+    },
     calcularDiasLaborables,
-    plazoAprobacionHoras: env.PLAZO_APROBACION_HORAS,
     asegurarPeriodos: (empresaId, usuarioId, hoy) =>
       periodos.asegurar(empresaId, usuarioId, hoy),
-    zonaHoraria: env.ZONA_HORARIA_NEGOCIO,
   });
 
   const router = Router();
-
-  // La configuración se monta primero y aplica la autenticación requerida en sus rutas.
-  router.use(
-    '/configuracion',
-    crearConfiguracionVacacionesRouter({
-      controller: crearConfiguracionVacacionesController(periodos),
-      autenticar: authenticate,
-    }),
-  );
 
   router.use(
     crearVacacionesRouter({

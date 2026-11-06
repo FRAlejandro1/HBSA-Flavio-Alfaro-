@@ -12,6 +12,7 @@ import {
 } from '../../../src/shared/security/tokens';
 
 const CLAVE_ACCESO = new TextEncoder().encode('secreto-de-acceso-solo-para-pruebas-0001');
+const CLAVE_REFRESH = new TextEncoder().encode('secreto-de-refresh-solo-para-pruebas-0002');
 const datosAcceso = { usuarioId: 3, empresaId: 5, rol: 'JEFE_AREA', jti: 'jti-1' } as const;
 
 describe('token de acceso', () => {
@@ -60,6 +61,23 @@ describe('token de acceso', () => {
       codigo: 'NO_AUTENTICADO',
     });
   });
+
+  it('rechaza un token firmado con empresaId inválido', async () => {
+    const ahora = Math.floor(Date.now() / 1000);
+    const invalido = await new SignJWT({ emp: 0, rol: 'EMPLEADO', tipo: 'acceso' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('3')
+      .setJti('jti-invalido')
+      .setIssuer('hbsa-backend')
+      .setAudience('hbsa-api')
+      .setIssuedAt(ahora)
+      .setExpirationTime(ahora + 3600)
+      .sign(CLAVE_ACCESO);
+
+    await expect(verificarAcceso(invalido)).rejects.toMatchObject({
+      codigo: 'NO_AUTENTICADO',
+    });
+  });
 });
 
 describe('token de refresh', () => {
@@ -71,6 +89,23 @@ describe('token de refresh', () => {
   it('rechaza un token de acceso usado como refresh', async () => {
     const acceso = await firmarAcceso(datosAcceso);
     await expect(verificarRefresh(acceso)).rejects.toMatchObject({ codigo: 'NO_AUTENTICADO' });
+  });
+
+  it('rechaza un refresh firmado con un tipo de token incorrecto', async () => {
+    const ahora = Math.floor(Date.now() / 1000);
+    const invalido = await new SignJWT({ tipo: 'acceso' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('3')
+      .setJti('jti-refresh-invalido')
+      .setIssuer('hbsa-backend')
+      .setAudience('hbsa-api')
+      .setIssuedAt(ahora)
+      .setExpirationTime(ahora + 3600)
+      .sign(CLAVE_REFRESH);
+
+    await expect(verificarRefresh(invalido)).rejects.toMatchObject({
+      codigo: 'NO_AUTENTICADO',
+    });
   });
 });
 

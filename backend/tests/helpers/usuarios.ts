@@ -1,4 +1,4 @@
-// Repositorio de usuarios en memoria, para probar sin MySQL. Reproduce las reglas de la base:
+﻿// Repositorio de usuarios en memoria, para probar sin MySQL. Reproduce las reglas de la base:
 // cedula unica por hospital, correo unico en todo el sistema y jefe inmediato del mismo hospital.
 import type {
   CambiosUsuario,
@@ -12,6 +12,7 @@ interface Guardado {
   empresaId: number;
   usuario: UsuarioDetalle;
   passwordHash: string | null;
+  diasVacaciones: number | null;
 }
 
 // Fecha que el repositorio real obtiene de CURDATE() cuando no se indica una
@@ -87,6 +88,7 @@ export function crearUsuariosEnMemoria(): {
       guardados.set(siguienteId, {
         empresaId,
         passwordHash: datos.passwordHash,
+        diasVacaciones: null,
         usuario: {
           id: siguienteId,
           cedula: datos.cedula,
@@ -139,6 +141,15 @@ export function crearUsuariosEnMemoria(): {
         sesionesCerradas.push(id);
       }
       return Promise.resolve();
+    },
+
+    configurarDiasVacaciones: (empresaId, _actorId, id, diasVacaciones) => {
+      const guardado = buscarGuardado(empresaId, id);
+      if (!guardado) {
+        return Promise.reject(AppError.noEncontrado('La persona indicada no existe en este hospital'));
+      }
+      guardado.diasVacaciones = diasVacaciones;
+      return Promise.resolve(guardado.diasVacaciones);
     },
 
     darDeBaja: (empresaId, id, fechaBaja) => {

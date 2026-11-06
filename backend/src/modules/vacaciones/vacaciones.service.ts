@@ -1,11 +1,10 @@
-
- // Reglas de negocio de las solicitudes de vacaciones: fechas, tipo, dias laborables, saldo, ruta de aprobacion,
- // decisiones de quien aprueba y quien puede ver cada solicitud. Las restricciones de la base las traduce el repository.
+// Reglas de negocio de las solicitudes de vacaciones: fechas, tipo, dias laborables, saldo, ruta de aprobacion,
+// decisiones de quien aprueba y quien puede ver cada solicitud. Las restricciones de la base las traduce el repository.
 import { logger } from '../../config/logger';
 import { AppError } from '../../shared/errors/AppError';
 import type { UsuarioAutenticado } from '../../shared/types/autenticacion';
-import { DIAS_ANTICIPACION_PROGRAMADA, esProgramada } from '../../shared/utils/fechas';
-import { ZONA_HORARIA_POR_DEFECTO, fechaEnZona } from '../../shared/utils/zonaHoraria';
+import { diasDeAnticipacion } from '../../shared/utils/fechas';
+import { fechaEnZona } from '../../shared/utils/zonaHoraria';
 import {
   ESTADOS_EN_TRAMITE,
   MENSAJE_SOLAPAMIENTO,
@@ -26,30 +25,37 @@ import type {
 import type { IVacacionesRepository } from './vacaciones.repository';
 import type { CrearSolicitudEntrada, DecisionEntrada } from './vacaciones.validators';
 
-export interface DependenciasVacacionesService {
-  repositorio: IVacacionesRepository;
-  // Dias laborables entre dos fechas (ambas incluidas): lunes a viernes sin los feriados indicados
-  calcularDiasLaborables: (inicio: string, fin: string, feriados: ReadonlySet<string>) => number;
-  // Horas que tiene quien aprueba para responder un paso (env.PLAZO_APROBACION_HORAS)
-  plazoAprobacionHoras: number;
-  // Crea los periodos de vacaciones que le falten a la persona (uno por aniversario de su ingreso);
-  // se llama antes de comprobar el saldo, con el dia de hoy en la zona del hospital
-  asegurarPeriodos?: (empresaId: number, usuarioId: number, hoy: string) => Promise<void>;
-  // Instante actual; detras de una funcion para fijarlo en las pruebas
-  ahora?: () => Date;
-  // Zona horaria del hospital, de la que sale el "dia" de la solicitud
-  zonaHoraria?: string;
+// Parametros institucionales que determinan las reglas operativas de vacaciones.
+export interface ConfiguracionOperativaVacaciones {
+  plazoHoras: number;
+  diasVacacionesAnuales: number;
+  zonaHoraria: string;
+  diasAnticipacionVacaciones: number;
 }
 
-// Que decirle a la persona cuando la ruta no encuentra quien apruebe
+export interface DependenciasVacacionesService {
+  repositorio: IVacacionesRepository;
+  // Obtiene la configuracion vigente del hospital al que pertenece la operacion.
+  obtenerConfiguracionInstitucional: (
+    empresaId: number,
+  ) => Promise<ConfiguracionOperativaVacaciones | null>;
+  // Dias laborables entre dos fechas (ambas incluidas): lunes a viernes sin los feriados indicados.
+  calcularDiasLaborables: (inicio: string, fin: string, feriados: ReadonlySet<string>) => number;
+  // Crea los periodos de vacaciones que le falten a la persona.
+  asegurarPeriodos?: (empresaId: number, usuarioId: number, hoy: string) => Promise<void>;
+  // Instante actual; detras de una funcion para fijarlo en las pruebas.
+  ahora?: () => Date;
+}
+
+// Que decirle a la persona cuando la ruta no encuentra quien apruebe.
 const MENSAJE_SIN_APROBADOR: Record<TipoAprobador, string> = {
   JEFE_INMEDIATO: 'No tienes un jefe inmediato activo asignado: pide a Talento Humano que lo registre',
   JEFE_AREA: 'Tu area no tiene un jefe activo asignado: pide a Talento Humano que lo registre',
-  AUTORIDAD_MAXIMA: 'El hospital no tiene un Director activo registrado',
+  AUTORIDAD_MAXIMA: 'El hospital no tiene exactamente un Rector activo registrado',
   SUPERADMIN: 'El hospital no tiene un SUPERADMIN activo registrado',
 };
 
-// Quien decidio, dicho como lo lee la persona en su notificacion; el SUPERADMIN (que aprueba al Director) no se nombra
+// Quien decidio, dicho como lo lee la persona en su notificacion.
 const POR_QUIEN: Record<TipoAprobador, string> = {
   JEFE_INMEDIATO: ' por tu jefe',
   JEFE_AREA: ' por tu jefe',
@@ -57,10 +63,10 @@ const POR_QUIEN: Record<TipoAprobador, string> = {
   SUPERADMIN: '',
 };
 
-// La columna de notificaciones admite 300 caracteres: del motivo se muestra solo el comienzo
+// La columna de notificaciones admite 300 caracteres: del motivo se muestra solo el comienzo.
 const LARGO_MAXIMO_MOTIVO_AVISO = 200;
 
-// Limite de aprobaciones representable por la columna orden de la base de datos
+// Limite de aprobaciones representable por la columna orden de la base de datos.
 const ORDEN_MAXIMO_APROBACION = 255;
 
 const MS_POR_HORA = 3_600_000;
@@ -76,21 +82,33 @@ function mensajeNegada(tipo: TipoAprobador, motivo: string | null): string {
 
 export class VacacionesService {
   private readonly ahora: () => Date;
-  private readonly zona: string;
 
   constructor(private readonly deps: DependenciasVacacionesService) {
     this.ahora = deps.ahora ?? (() => new Date());
-    this.zona = deps.zonaHoraria ?? ZONA_HORARIA_POR_DEFECTO;
   }
 
-  // La persona solicita sus propias vacaciones; el primer paso se asigna segun la ruta de su nivel
+  // Recupera la configuracion del hospital y evita operar con reglas institucionales inexistentes.
+  private async obtenerConfiguracion(empresaId: number): Promise<ConfiguracionOperativaVacaciones> {
+    const configuracion = await this.deps.obtenerConfiguracionInstitucional(empresaId);
+
+    if (configuracion === null) {
+      throw AppError.reglaDeNegocio(
+        `No existe configuracion institucional para el hospital ${String(empresaId)}`,
+      );
+    }
+
+    return configuracion;
+  }
+
+  // La persona solicita sus propias vacaciones; el primer paso se asigna segun la ruta de su nivel.
   async crear(actor: UsuarioAutenticado, entrada: CrearSolicitudEntrada): Promise<SolicitudDetalle> {
     const repositorio = this.deps.repositorio;
     const empresaId = actor.empresaId;
+    const configuracion = await this.obtenerConfiguracion(empresaId);
 
-    // Fecha y hora las pone el servidor; el "dia" de la solicitud es el de la zona del hospital
+    // Fecha y hora las pone el servidor; el dia de la solicitud corresponde a la zona del hospital.
     const solicitadoAt = this.ahora();
-    const hoy = fechaEnZona(solicitadoAt, this.zona);
+    const hoy = fechaEnZona(solicitadoAt, configuracion.zonaHoraria);
 
     const solicitante = await repositorio.buscarSolicitante(empresaId, actor.id);
     if (!solicitante) {
@@ -104,37 +122,53 @@ export class VacacionesService {
       throw AppError.reglaDeNegocio('La fecha de inicio no puede ser anterior a hoy');
     }
 
-    // No programada: justificacion obligatoria (la base deriva el mismo tipo con la misma regla)
+    // La clasificacion y la justificacion usan el umbral institucional vigente al crear la solicitud.
+    const diasAnticipacionAplicada = configuracion.diasAnticipacionVacaciones;
+    const diasAnticipacion = diasDeAnticipacion(hoy, entrada.fechaInicio);
     const justificacion = entrada.justificacion ?? null;
-    if (!esProgramada(hoy, entrada.fechaInicio) && justificacion === null) {
+
+    if (diasAnticipacion < diasAnticipacionAplicada && justificacion === null) {
       throw AppError.reglaDeNegocio(
-        `Una solicitud con menos de ${String(DIAS_ANTICIPACION_PROGRAMADA)} dias de anticipacion necesita justificacion`,
+        `Una solicitud con menos de ${String(diasAnticipacionAplicada)} dias de anticipacion necesita justificacion`,
       );
     }
 
     const feriados = new Set(await repositorio.feriadosEntre(entrada.fechaInicio, entrada.fechaFin));
-    const diasSolicitados = this.deps.calcularDiasLaborables(entrada.fechaInicio, entrada.fechaFin, feriados);
+    const diasSolicitados = this.deps.calcularDiasLaborables(
+      entrada.fechaInicio,
+      entrada.fechaFin,
+      feriados,
+    );
+
     if (diasSolicitados <= 0) {
       throw AppError.reglaDeNegocio('Las fechas indicadas no incluyen ningun dia laborable');
     }
 
-    // Aviso rapido: la comprobacion definitiva de solapamiento y saldo la repite registrarSolicitud
-    // dentro de la transaccion, con la persona bloqueada
-    if (await repositorio.existeSolapamiento(empresaId, actor.id, entrada.fechaInicio, entrada.fechaFin)) {
+    // La comprobacion definitiva de solapamiento y saldo se repite dentro de la transaccion.
+    if (await repositorio.existeSolapamiento(
+      empresaId,
+      actor.id,
+      entrada.fechaInicio,
+      entrada.fechaFin,
+    )) {
       throw AppError.conflicto(MENSAJE_SOLAPAMIENTO);
     }
 
-    // Los periodos se crean al hacer falta: asi el saldo siempre sale de periodos al dia
+    // Los periodos se crean al hacer falta: asi el saldo siempre sale de periodos al dia.
     await this.deps.asegurarPeriodos?.(empresaId, actor.id, hoy);
 
-    // Los dias de las solicitudes en tramite ya estan reservados: el saldo disponible los descuenta.
-    // El descuento real de los periodos (FIFO) se hace al autorizar.
+    // Los dias de las solicitudes en tramite ya estan reservados; el descuento FIFO se hace al autorizar.
     const saldo = await repositorio.saldoDisponible(empresaId, actor.id, entrada.fechaInicio);
     if (saldo < diasSolicitados) {
       throw AppError.reglaDeNegocio(mensajeSaldoInsuficiente(saldo, diasSolicitados));
     }
 
-    const primerPaso = await this.armarPrimerPaso(empresaId, solicitante, solicitadoAt);
+    const primerPaso = await this.armarPrimerPaso(
+      empresaId,
+      solicitante,
+      solicitadoAt,
+      configuracion.plazoHoras,
+    );
 
     const id = await repositorio.registrarSolicitud(empresaId, {
       usuarioId: actor.id,
@@ -144,37 +178,45 @@ export class VacacionesService {
       telefonoLocalizacion: entrada.telefonoLocalizacion ?? solicitante.telefono,
       solicitadoAt,
       fechaSolicitud: hoy,
+      diasAnticipacionAplicada,
       fechaInicio: entrada.fechaInicio,
       fechaFin: entrada.fechaFin,
       diasSolicitados,
       justificacion,
       primerPaso,
     });
+
     return this.obtenerDetalle(empresaId, id, hoy);
   }
 
-  // Solo lo ven el solicitante, quienes intervienen en la aprobacion, Talento Humano y el SUPERADMIN
+  // Solo lo ven el solicitante, quienes intervienen en la aprobacion, Talento Humano y el SUPERADMIN.
   async obtener(actor: UsuarioAutenticado, id: number): Promise<SolicitudDetalle> {
-    const hoy = fechaEnZona(this.ahora(), this.zona);
+    const configuracion = await this.obtenerConfiguracion(actor.empresaId);
+    const hoy = fechaEnZona(this.ahora(), configuracion.zonaHoraria);
     const solicitud = await this.obtenerDetalle(actor.empresaId, id, hoy);
+
     if (!this.puedeVer(actor, solicitud)) {
-      // Mismo error que si no existiera: no se revela que la solicitud es de otra persona
       throw AppError.noEncontrado('La solicitud no existe');
     }
+
     return solicitud;
   }
 
-  // Historial de las solicitudes de la propia persona
-  async listarPropias(actor: UsuarioAutenticado, filtros: FiltrosSolicitudes): Promise<PaginaSolicitudes> {
+  // Historial de las solicitudes de la propia persona.
+  async listarPropias(
+    actor: UsuarioAutenticado,
+    filtros: FiltrosSolicitudes,
+  ): Promise<PaginaSolicitudes> {
     const { solicitudes, total } = await this.deps.repositorio.listarSolicitudesDe(
       actor.empresaId,
       actor.id,
       filtros,
     );
+
     return { solicitudes, total, pagina: filtros.pagina, porPagina: filtros.porPagina };
   }
 
-  // Procesa los pasos vencidos y escala cada uno a la autoridad que corresponda
+  // Procesa los pasos vencidos y escala cada uno a la autoridad que corresponda.
   async procesarEscalamientosVencidos(limite = 100): Promise<number> {
     const repositorio = this.deps.repositorio;
     const ahora = this.ahora();
@@ -183,7 +225,7 @@ export class VacacionesService {
 
     for (const paso of pasos) {
       try {
-        // El SUPERADMIN es la ultima instancia y no debe escalarse
+        // SUPERADMIN es la ultima instancia: su vencimiento no genera otro paso.
         if (paso.tipoAprobador === 'SUPERADMIN') {
           continue;
         }
@@ -203,34 +245,19 @@ export class VacacionesService {
           continue;
         }
 
-        // Si vence un jefe, primero se intenta asignar la solicitud al Rector
-        let nuevoTipoAprobador: TipoAprobador =
-          paso.tipoAprobador === 'JEFE_INMEDIATO' || paso.tipoAprobador === 'JEFE_AREA'
-            ? 'AUTORIDAD_MAXIMA'
-            : 'SUPERADMIN';
+        // El vencimiento de un jefe o delegado escala al Rector; el del Rector, al SUPERADMIN.
+        const nuevoTipoAprobador: TipoAprobador =
+          paso.tipoAprobador === 'AUTORIDAD_MAXIMA' ? 'SUPERADMIN' : 'AUTORIDAD_MAXIMA';
 
-        let nuevoAprobadorId = await repositorio.resolverAprobador(
+        const nuevoAprobadorId = await repositorio.resolverAprobador(
           paso.empresaId,
           nuevoTipoAprobador,
           solicitante,
         );
 
-        // Si el Rector no existe, esta inactivo o es el propio solicitante, se recurre al SUPERADMIN
-        if (
-          nuevoTipoAprobador === 'AUTORIDAD_MAXIMA'
-          && (nuevoAprobadorId === null || nuevoAprobadorId === solicitante.id)
-        ) {
-          nuevoTipoAprobador = 'SUPERADMIN';
-          nuevoAprobadorId = await repositorio.resolverAprobador(
-            paso.empresaId,
-            nuevoTipoAprobador,
-            solicitante,
-          );
-        }
-
-        // Sin un aprobador activo y distinto del solicitante, la solicitud queda pendiente
+        // No se sustituye un Rector inexistente por SUPERADMIN: debe corregirse la configuracion institucional.
         if (nuevoAprobadorId === null || nuevoAprobadorId === solicitante.id) {
-          logger.error('No se puede escalar la solicitud: no hay un aprobador válido', {
+          logger.error('No se puede escalar la solicitud: no hay un aprobador valido', {
             empresaId: paso.empresaId,
             solicitudId: paso.solicitudId,
             pasoId: paso.pasoId,
@@ -239,10 +266,9 @@ export class VacacionesService {
           continue;
         }
 
-        // La columna orden de la base de datos es TINYINT UNSIGNED
         const nuevaOrden = paso.orden + 1;
         if (!Number.isSafeInteger(nuevaOrden) || nuevaOrden > ORDEN_MAXIMO_APROBACION) {
-          logger.error('No se puede escalar la solicitud: se agotó el orden de aprobación', {
+          logger.error('No se puede escalar la solicitud: se agoto el orden de aprobacion', {
             empresaId: paso.empresaId,
             solicitudId: paso.solicitudId,
             pasoId: paso.pasoId,
@@ -251,6 +277,8 @@ export class VacacionesService {
           continue;
         }
 
+        const configuracion = await this.obtenerConfiguracion(paso.empresaId);
+
         const datos: DatosEscalamientoPlazo = {
           solicitudId: paso.solicitudId,
           pasoId: paso.pasoId,
@@ -258,13 +286,11 @@ export class VacacionesService {
           nuevoAprobadorId,
           nuevaOrden,
           escaladoAt: ahora,
-          nuevaVenceAt: new Date(
-            ahora.getTime() + this.deps.plazoAprobacionHoras * MS_POR_HORA,
-          ),
-          motivo: `Escalamiento automático por vencimiento del plazo de aprobación de ${paso.tipoAprobador}.`,
+          nuevaVenceAt: this.venceDesde(ahora, configuracion.plazoHoras),
+          motivo: `Escalamiento automatico por vencimiento del plazo de aprobacion de ${paso.tipoAprobador}.`,
         };
 
-        // El repositorio vuelve a comprobar estado y vencimiento dentro de la transaccion
+        // El repositorio vuelve a comprobar estado y vencimiento dentro de la transaccion.
         const escalado = await repositorio.escalarPasoVencido(
           paso.empresaId,
           datos,
@@ -282,7 +308,7 @@ export class VacacionesService {
           });
         }
       } catch (error) {
-        // Un error no debe impedir que se procesen los demas pasos vencidos
+        // Un error no debe impedir que se procesen los demas pasos vencidos.
         logger.error('Error al procesar el escalamiento de una solicitud', {
           empresaId: paso.empresaId,
           solicitudId: paso.solicitudId,
@@ -295,21 +321,28 @@ export class VacacionesService {
     return escalados;
   }
 
-  // Aprueba el paso pendiente: con mas pasos en la ruta abre el siguiente; si era el ultimo, autoriza y descuenta los dias
-  async aprobar(actor: UsuarioAutenticado, id: number, entrada: DecisionEntrada): Promise<SolicitudDetalle> {
+  // Aprueba el paso pendiente: abre el siguiente o autoriza y descuenta los dias.
+  async aprobar(
+    actor: UsuarioAutenticado,
+    id: number,
+    entrada: DecisionEntrada,
+  ): Promise<SolicitudDetalle> {
     const repositorio = this.deps.repositorio;
     const empresaId = actor.empresaId;
     const { solicitud, paso, hoy } = await this.cargarParaDecidir(actor, id);
     const decididoAt = this.ahora();
+
     const decision = {
       solicitudId: solicitud.id,
       pasoId: paso.id,
-      aprobadorId: actor.id,
+      aprobadorId: paso.aprobador.id,
+      decididoPorId: actor.id,
+      delegacionId: null,
       decididoAt,
       motivo: entrada.motivo ?? null,
     };
 
-    // La aprobacion de un paso escalado por vencimiento autoriza directamente la solicitud
+    // La aprobacion de un paso escalado por vencimiento autoriza directamente la solicitud.
     if (paso.origen === 'ESCALAMIENTO_PLAZO') {
       await repositorio.autorizarSolicitud(empresaId, {
         ...decision,
@@ -319,6 +352,7 @@ export class VacacionesService {
           mensaje: mensajeAprobada(solicitud.solicitante.nombres, paso.tipoAprobador),
         },
       });
+
       return this.obtenerDetalle(empresaId, id, hoy);
     }
 
@@ -327,7 +361,6 @@ export class VacacionesService {
       throw AppError.noEncontrado('La persona que solicito ya no existe');
     }
 
-    // La ruta de su nivel dice si despues de este paso hay otro (el orden empieza en 1: ruta[orden] es el siguiente)
     const ruta = await repositorio.listarRuta(empresaId, solicitante.nivelJerarquico);
     const tipoSiguiente = ruta[paso.orden];
 
@@ -348,13 +381,19 @@ export class VacacionesService {
         paso.orden + 1,
         decididoAt,
       );
+
       await repositorio.aprobarPasoIntermedio(empresaId, { ...decision, siguiente });
     }
+
     return this.obtenerDetalle(empresaId, id, hoy);
   }
 
-  // Niega la solicitud; el motivo es opcional
-  async negar(actor: UsuarioAutenticado, id: number, entrada: DecisionEntrada): Promise<SolicitudDetalle> {
+  // Niega la solicitud; el motivo es opcional.
+  async negar(
+    actor: UsuarioAutenticado,
+    id: number,
+    entrada: DecisionEntrada,
+  ): Promise<SolicitudDetalle> {
     const empresaId = actor.empresaId;
     const { solicitud, paso, hoy } = await this.cargarParaDecidir(actor, id);
     const motivo = entrada.motivo ?? null;
@@ -362,7 +401,9 @@ export class VacacionesService {
     await this.deps.repositorio.negarSolicitud(empresaId, {
       solicitudId: solicitud.id,
       pasoId: paso.id,
-      aprobadorId: actor.id,
+      aprobadorId: paso.aprobador.id,
+      decididoPorId: actor.id,
+      delegacionId: null,
       decididoAt: this.ahora(),
       motivo,
       notificacion: {
@@ -371,28 +412,33 @@ export class VacacionesService {
         mensaje: mensajeNegada(paso.tipoAprobador, motivo),
       },
     });
+
     return this.obtenerDetalle(empresaId, id, hoy);
   }
 
-  // La persona cancela su propia solicitud mientras sigue en tramite; una autorizada solo la revierte el administrador
-  async cancelar(actor: UsuarioAutenticado, id: number, entrada: DecisionEntrada): Promise<SolicitudDetalle> {
+  // La persona solicitante solo puede cancelar mientras la solicitud este PENDIENTE.
+  async cancelar(
+    actor: UsuarioAutenticado,
+    id: number,
+    entrada: DecisionEntrada,
+  ): Promise<SolicitudDetalle> {
     const empresaId = actor.empresaId;
-    const hoy = fechaEnZona(this.ahora(), this.zona);
+    const configuracion = await this.obtenerConfiguracion(empresaId);
+    const hoy = fechaEnZona(this.ahora(), configuracion.zonaHoraria);
     const solicitud = await this.obtenerDetalle(empresaId, id, hoy);
 
     if (solicitud.solicitante.id !== actor.id) {
       if (!this.puedeVer(actor, solicitud)) {
         throw AppError.noEncontrado('La solicitud no existe');
       }
+
       throw AppError.prohibido('Solo quien la solicito puede cancelarla');
     }
-    if (solicitud.estado === 'AUTORIZADA') {
+
+    if (solicitud.estado !== 'PENDIENTE') {
       throw AppError.conflicto(
-        'Una solicitud autorizada no se puede cancelar: pide al administrador que la revierta',
+        'Solo puedes cancelar una solicitud que se encuentre pendiente',
       );
-    }
-    if (!ESTADOS_EN_TRAMITE.includes(solicitud.estado)) {
-      throw AppError.conflicto('La solicitud ya fue resuelta');
     }
 
     await this.deps.repositorio.cancelarSolicitud(empresaId, {
@@ -401,31 +447,37 @@ export class VacacionesService {
       canceladaAt: this.ahora(),
       motivo: entrada.motivo ?? null,
     });
+
     return this.obtenerDetalle(empresaId, id, hoy);
   }
 
-  // La solicitud y su paso pendiente, comprobando que quien decide puede verla, que sigue en tramite y que el paso es suyo
+  // Carga la solicitud y su paso pendiente, validando que el actor pueda verla y decidirla.
   private async cargarParaDecidir(
     actor: UsuarioAutenticado,
     id: number,
   ): Promise<{ solicitud: SolicitudDetalle; paso: PasoAprobacion; hoy: string }> {
-    const hoy = fechaEnZona(this.ahora(), this.zona);
+    const configuracion = await this.obtenerConfiguracion(actor.empresaId);
+    const hoy = fechaEnZona(this.ahora(), configuracion.zonaHoraria);
     const solicitud = await this.obtenerDetalle(actor.empresaId, id, hoy);
 
     if (!this.puedeVer(actor, solicitud)) {
       throw AppError.noEncontrado('La solicitud no existe');
     }
+
     if (!ESTADOS_EN_TRAMITE.includes(solicitud.estado)) {
       throw AppError.conflicto('La solicitud ya fue resuelta');
     }
+
     const paso = solicitud.pasos.find((p) => p.estado === 'PENDIENTE');
     if (!paso) {
       throw AppError.conflicto('La solicitud no tiene un paso pendiente');
     }
-    // Decide quien tiene asignado el paso, no quien tenga cierto rol
+
+    // Decide quien tiene asignado el paso, no quien tenga cierto rol.
     if (paso.aprobador.id !== actor.id) {
       throw AppError.prohibido('Esta solicitud la debe resolver otra persona');
     }
+
     return { solicitud, paso, hoy };
   }
 
@@ -434,55 +486,96 @@ export class VacacionesService {
       solicitud.solicitante.id === actor.id ||
       actor.rol === 'TALENTO_HUMANO' ||
       actor.rol === 'SUPERADMIN' ||
-      solicitud.pasos.some((p) => p.aprobador.id === actor.id || p.decididoPor?.id === actor.id)
+      solicitud.pasos.some(
+        (p) => p.aprobador.id === actor.id || p.decididoPor?.id === actor.id,
+      )
     );
   }
 
-  // Quien debe aprobar un paso de la ruta: una persona activa, distinta de quien solicita
+  // Quien debe aprobar un paso de la ruta: una persona activa, distinta de quien solicita.
   private async elegirAprobador(
     empresaId: number,
     solicitante: Solicitante,
     tipo: TipoAprobador,
   ): Promise<number> {
-    const aprobadorId = await this.deps.repositorio.resolverAprobador(empresaId, tipo, solicitante);
+    const aprobadorId = await this.deps.repositorio.resolverAprobador(
+      empresaId,
+      tipo,
+      solicitante,
+    );
+
     if (aprobadorId === null) {
       throw AppError.reglaDeNegocio(MENSAJE_SIN_APROBADOR[tipo]);
     }
+
     if (aprobadorId === solicitante.id) {
       throw AppError.reglaDeNegocio(
         'No puedes aprobar tu propia solicitud: pide a Talento Humano que revise tu ruta de aprobacion',
       );
     }
+
     return aprobadorId;
   }
 
-  // Limite para responder un paso que se abre en este instante
-  private venceDesde(asignadoAt: Date): Date {
-    return new Date(asignadoAt.getTime() + this.deps.plazoAprobacionHoras * MS_POR_HORA);
+  // Limite para responder un paso, calculado con el plazo vigente al asignarlo.
+  private venceDesde(asignadoAt: Date, plazoHoras: number): Date {
+    return new Date(asignadoAt.getTime() + plazoHoras * MS_POR_HORA);
   }
 
-  // Primer paso de la ruta del nivel del solicitante, con su aprobador y el limite para responder
+  // Asigna el primer paso; si no hay jefe inmediato activo, dirige la solicitud al Rector.
   private async armarPrimerPaso(
     empresaId: number,
     solicitante: Solicitante,
     solicitadoAt: Date,
+    plazoHoras: number,
   ): Promise<DatosPrimerPaso> {
-    const ruta = await this.deps.repositorio.listarRuta(empresaId, solicitante.nivelJerarquico);
-    const tipoAprobador = ruta[0];
+    const ruta = await this.deps.repositorio.listarRuta(
+      empresaId,
+      solicitante.nivelJerarquico,
+    );
+    let tipoAprobador = ruta[0];
+
     if (tipoAprobador === undefined) {
-      throw AppError.reglaDeNegocio('El hospital no tiene una ruta de aprobacion definida para tu nivel');
+      throw AppError.reglaDeNegocio(
+        'El hospital no tiene una ruta de aprobacion definida para tu nivel',
+      );
     }
 
-    const aprobadorId = await this.elegirAprobador(empresaId, solicitante, tipoAprobador);
+    let aprobadorId = await this.deps.repositorio.resolverAprobador(
+      empresaId,
+      tipoAprobador,
+      solicitante,
+    );
+
+    // Sin jefe inmediato activo, la solicitud se asigna directamente al Rector.
+    if (aprobadorId === null && tipoAprobador === 'JEFE_INMEDIATO') {
+      tipoAprobador = 'AUTORIDAD_MAXIMA';
+      aprobadorId = await this.deps.repositorio.resolverAprobador(
+        empresaId,
+        tipoAprobador,
+        solicitante,
+      );
+    }
+
+    if (aprobadorId === null) {
+      throw AppError.reglaDeNegocio(MENSAJE_SIN_APROBADOR[tipoAprobador]);
+    }
+
+    if (aprobadorId === solicitante.id) {
+      throw AppError.reglaDeNegocio(
+        'No puedes aprobar tu propia solicitud: pide a Talento Humano que revise tu ruta de aprobacion',
+      );
+    }
+
     return {
       tipoAprobador,
       aprobadorId,
       asignadoAt: solicitadoAt,
-      venceAt: this.venceDesde(solicitadoAt),
+      venceAt: this.venceDesde(solicitadoAt, plazoHoras),
     };
   }
 
-  // Paso que se abre cuando el anterior se aprueba y la ruta todavia tiene mas pasos
+  // Paso que se abre cuando el anterior se aprueba y la ruta todavia tiene mas pasos.
   private async armarSiguientePaso(
     empresaId: number,
     solicitante: Solicitante,
@@ -490,15 +583,33 @@ export class VacacionesService {
     orden: number,
     asignadoAt: Date,
   ): Promise<DatosSiguientePaso> {
-    const aprobadorId = await this.elegirAprobador(empresaId, solicitante, tipoAprobador);
-    return { orden, tipoAprobador, aprobadorId, asignadoAt, venceAt: this.venceDesde(asignadoAt) };
+    const configuracion = await this.obtenerConfiguracion(empresaId);
+    const aprobadorId = await this.elegirAprobador(
+      empresaId,
+      solicitante,
+      tipoAprobador,
+    );
+
+    return {
+      orden,
+      tipoAprobador,
+      aprobadorId,
+      asignadoAt,
+      venceAt: this.venceDesde(asignadoAt, configuracion.plazoHoras),
+    };
   }
 
-  private async obtenerDetalle(empresaId: number, id: number, hoy: string): Promise<SolicitudDetalle> {
+  private async obtenerDetalle(
+    empresaId: number,
+    id: number,
+    hoy: string,
+  ): Promise<SolicitudDetalle> {
     const solicitud = await this.deps.repositorio.obtenerSolicitud(empresaId, id, hoy);
+
     if (!solicitud) {
       throw AppError.noEncontrado('La solicitud no existe');
     }
+
     return solicitud;
   }
 }

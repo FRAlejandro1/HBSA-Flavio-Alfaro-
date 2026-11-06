@@ -4,6 +4,8 @@ import { cerrarBaseDatos, obtenerBaseDatos } from '../../../src/config/database'
 import { OrganizacionRepository } from '../../../src/modules/organizacion/organizacion.repository';
 import { IDS, insertarUsuario, resetearDatos } from '../../helpers/baseDatos';
 
+const bd = obtenerBaseDatos();
+
 const repositorio = new OrganizacionRepository(obtenerBaseDatos());
 
 // Proceso institucional de las areas de prueba: el catalogo lo carga la migracion 006 (2 es AGREGADOR_VALOR)
@@ -134,6 +136,108 @@ describe('areas', () => {
     expect(await repositorio.eliminarArea(IDS.empresaA, IDS.areaA2)).toBe(false);
     expect(await repositorio.eliminarArea(IDS.empresaA, IDS.areaB1)).toBe(false);
     expect(await repositorio.buscarArea(IDS.empresaB, IDS.areaB1)).not.toBeNull();
+  });
+});
+
+describe('configuracion de dias de vacaciones por area', () => {
+  it('configura los dias del area y registra la auditoria', async () => {
+    const actorId = await insertarUsuario({
+      empresaId: IDS.empresaA,
+      areaId: IDS.areaA1,
+      cargoId: IDS.cargoA1,
+      cedula: '0100000001',
+      rol: 'SUPERADMIN',
+    });
+
+    await expect(
+      repositorio.configurarDiasVacacionesArea(IDS.empresaA, actorId, IDS.areaA1, 25.5),
+    ).resolves.toBe(25.5);
+
+    const area = await repositorio.buscarArea(IDS.empresaA, IDS.areaA1);
+    expect(area?.diasVacaciones).toBe(25.5);
+
+    const auditorias = await bd.consultar<{
+      empresa_id: number;
+      usuario_id: number;
+      accion: string;
+      entidad: string;
+      entidad_id: number;
+    }>(
+      `SELECT empresa_id, usuario_id, accion, entidad, entidad_id
+       FROM audit_log
+       WHERE empresa_id = ? AND entidad = 'AREA' AND entidad_id = ?`,
+      [IDS.empresaA, IDS.areaA1],
+    );
+
+    expect(auditorias).toHaveLength(1);
+    expect(auditorias[0]).toMatchObject({
+      empresa_id: IDS.empresaA,
+      usuario_id: actorId,
+      accion: 'ACTUALIZACION_DIAS_VACACIONES_AREA',
+      entidad: 'AREA',
+      entidad_id: IDS.areaA1,
+    });
+  });
+
+  it('permite restablecer la herencia institucional mediante null', async () => {
+    const actorId = await insertarUsuario({
+      empresaId: IDS.empresaA,
+      areaId: IDS.areaA1,
+      cargoId: IDS.cargoA1,
+      cedula: '0100000001',
+      rol: 'SUPERADMIN',
+    });
+
+    await repositorio.configurarDiasVacacionesArea(IDS.empresaA, actorId, IDS.areaA1, 25.5);
+    await repositorio.configurarDiasVacacionesArea(IDS.empresaA, actorId, IDS.areaA1, null);
+
+    const area = await repositorio.buscarArea(IDS.empresaA, IDS.areaA1);
+    expect(area?.diasVacaciones).toBeNull();
+
+    const auditorias = await bd.consultar<{
+      detalle: { antes: number | null; despues: number | null } | string;
+    }>(
+      `SELECT detalle
+       FROM audit_log
+       WHERE empresa_id = ? AND entidad = 'AREA' AND entidad_id = ?
+       ORDER BY id`,
+      [IDS.empresaA, IDS.areaA1],
+    );
+
+    expect(auditorias).toHaveLength(2);
+
+    const ultimoDetalle: unknown =
+      typeof auditorias[1]?.detalle === 'string'
+        ? JSON.parse(auditorias[1].detalle)
+        : auditorias[1]?.detalle;
+
+    expect(ultimoDetalle).toEqual({ antes: 25.5, despues: null });
+  });
+
+  it('no permite configurar un area de otro hospital ni genera auditoria', async () => {
+    const actorId = await insertarUsuario({
+      empresaId: IDS.empresaA,
+      areaId: IDS.areaA1,
+      cargoId: IDS.cargoA1,
+      cedula: '0100000001',
+      rol: 'SUPERADMIN',
+    });
+
+    await expect(
+      repositorio.configurarDiasVacacionesArea(IDS.empresaA, actorId, IDS.areaB1, 25.5),
+    ).rejects.toThrow('AREA_NO_ENCONTRADA');
+
+    const areaAjena = await repositorio.buscarArea(IDS.empresaB, IDS.areaB1);
+    expect(areaAjena?.diasVacaciones).toBeNull();
+
+    const auditorias = await bd.consultar<{ total: number }>(
+      `SELECT COUNT(*) AS total
+       FROM audit_log
+       WHERE empresa_id = ? AND entidad = 'AREA' AND entidad_id = ?`,
+      [IDS.empresaA, IDS.areaB1],
+    );
+
+    expect(Number(auditorias[0]?.total ?? 0)).toBe(0);
   });
 });
 

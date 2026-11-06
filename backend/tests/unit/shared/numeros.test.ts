@@ -19,10 +19,24 @@ describe('parsearNumero', () => {
 
 describe('redondear', () => {
   it('redondea a dos decimales por defecto', () => {
-    expect(redondear(2.456)).toBe(2.46);
+    const resultado = redondear(2.456);
+    expect(resultado).toBe(2.46);
   });
 
   it('acepta otra cantidad de decimales', () => {
-    expect(redondear(2.456, 1)).toBe(2.5);
+    const resultado = redondear(2.456, 1);
+    expect(resultado).toBe(2.5);
+  });
+
+  it('redondea valores negativos', () => {
+    expect(redondear(-2.456)).toBe(-2.46);
+  });
+
+  it('redondea a cero decimales', () => {
+    expect(redondear(2.6, 0)).toBe(3);
+  });
+
+  it('ejecuta el valor predeterminado con undefined explícito', () => {
+    expect(redondear(2.456, undefined)).toBe(2.46);
   });
 });

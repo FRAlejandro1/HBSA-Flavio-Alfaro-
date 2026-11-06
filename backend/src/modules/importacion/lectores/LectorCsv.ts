@@ -15,19 +15,18 @@ function decodificar(contenido: Buffer): string {
 
 // El separador es el mas frecuente en la primera linea, fuera de comillas. Excel en espanol usa ";"
 function detectarSeparador(texto: string): string {
-  const primeraLinea = texto.split(/\r?\n/).find((linea) => linea.trim() !== '') ?? '';
-  const cuentas: Record<string, number> = { ',': 0, ';': 0, '\t': 0 };
+  const primeraLinea = texto.split(/\r?\n/).find((linea) => linea.trim() !== '')!; const cuentas: Record<string, number> = { ',': 0, ';': 0, '\t': 0 };
   let entreComillas = false;
   for (const caracter of primeraLinea) {
     if (caracter === '"') {
       entreComillas = !entreComillas;
     } else if (!entreComillas && caracter in cuentas) {
-      cuentas[caracter] = (cuentas[caracter] ?? 0) + 1;
+      cuentas[caracter] = cuentas[caracter]! + 1;
     }
   }
   let mejor = ',';
   for (const separador of [';', '\t']) {
-    if ((cuentas[separador] ?? 0) > (cuentas[mejor] ?? 0)) {
+    if (cuentas[separador]! > cuentas[mejor]!) {
       mejor = separador;
     }
   }

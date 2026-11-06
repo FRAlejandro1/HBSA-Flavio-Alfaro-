@@ -1,6 +1,6 @@
-
- // Acceso a datos de vacaciones. Solo SQL parametrizado y siempre filtrado por empresa_id.
+// Acceso a datos de vacaciones. Solo SQL parametrizado y siempre filtrado por empresa_id.
 // El service depende de IVacacionesRepository, no de esta clase.
+
 import type { IBaseDatos, IConexionBD, ValorSql } from '../../config/database';
 import { AppError } from '../../shared/errors/AppError';
 import { traducirErrorBD } from '../../shared/errors/errorBD';
@@ -35,24 +35,30 @@ import type {
 export interface IVacacionesRepository {
   // null si la persona no existe en ese hospital
   buscarSolicitante: (empresaId: number, usuarioId: number) => Promise<Solicitante | null>;
+
   // Tipos de aprobador de la ruta para un nivel jerarquico, en orden de paso
   listarRuta: (empresaId: number, nivelJerarquico: number) => Promise<TipoAprobador[]>;
+
   // Persona activa que debe aprobar segun el tipo; null si no hay ninguna
   resolverAprobador: (
     empresaId: number,
     tipo: TipoAprobador,
     solicitante: Solicitante,
   ) => Promise<number | null>;
+
   // Busca los pasos pendientes cuyo plazo de aprobacion ya vencio
   listarPasosVencidos: (ahora: Date, limite: number) => Promise<PasoVencido[]>;
+
   // Escala un paso vencido en una transaccion; false si ya fue resuelto o escalado
   escalarPasoVencido: (
     empresaId: number,
     datos: DatosEscalamientoPlazo,
     ahora: Date,
   ) => Promise<boolean>;
+
   // Feriados (AAAA-MM-DD) dentro del rango, ambos extremos incluidos
   feriadosEntre: (inicio: string, fin: string) => Promise<string[]>;
+
   // true si la persona ya tiene una solicitud en tramite o autorizada que se cruza con el rango
   existeSolapamiento: (
     empresaId: number,
@@ -60,23 +66,28 @@ export interface IVacacionesRepository {
     inicio: string,
     fin: string,
   ) => Promise<boolean>;
-  // Dias que la persona puede pedir: los de sus periodos vigentes en la fecha que aun no se han usado,
-  // menos los que ya tiene reservados en solicitudes en tramite (el descuento real es al autorizar)
+
+  // Dias que la persona puede pedir: los de sus periodos vigentes menos los reservados
   saldoDisponible: (empresaId: number, usuarioId: number, fecha: string) => Promise<number>;
-  // Guarda la solicitud, su numero de tramite y su primer paso en una sola transaccion; devuelve el id.
-  // Dentro de la transaccion repite el solapamiento y el saldo con la persona bloqueada, y lanza
-  // CONFLICTO o REGLA_DE_NEGOCIO si dos solicitudes simultaneas se cuelan por las comprobaciones previas.
+
+  // Guarda la solicitud, su numero de tramite y su primer paso en una sola transaccion
   registrarSolicitud: (empresaId: number, datos: DatosNuevaSolicitud) => Promise<number>;
-  // Aprueba un paso que no es el ultimo: la solicitud queda en VISTO_BUENO y se abre el paso siguiente
+
+  // Aprueba un paso que no es el ultimo y abre el paso siguiente
   aprobarPasoIntermedio: (empresaId: number, datos: DatosAprobacionIntermedia) => Promise<void>;
-  // Aprueba el ultimo paso: autoriza la solicitud, descuenta los dias de los periodos (FIFO) y avisa a la persona
+
+  // Aprueba el ultimo paso, descuenta los dias de los periodos y avisa a la persona
   autorizarSolicitud: (empresaId: number, datos: DatosResolucionFinal) => Promise<void>;
-  // Niega la solicitud (los dias reservados se liberan solos) y avisa a la persona
+
+  // Niega la solicitud y avisa a la persona
   negarSolicitud: (empresaId: number, datos: DatosResolucionFinal) => Promise<void>;
-  // La persona cancela su solicitud mientras sigue en tramite
+
+  // La persona cancela su solicitud mientras sigue en estado PENDIENTE
   cancelarSolicitud: (empresaId: number, datos: DatosCancelacion) => Promise<void>;
+
   // hoy (AAAA-MM-DD en la zona del hospital) sirve para marcar si cada aprobador esta disponible
   obtenerSolicitud: (empresaId: number, id: number, hoy: string) => Promise<SolicitudDetalle | null>;
+
   listarSolicitudesDe: (
     empresaId: number,
     usuarioId: number,
@@ -167,7 +178,7 @@ interface FilaResumen {
   solicitadoAt: Date;
 }
 
-// Solicitud bloqueada para decidirla: lo que hace falta para descontar sus dias
+// Solicitud bloqueada para decidirla: datos necesarios para descontar sus dias.
 interface FilaSolicitudBloqueada {
   estado: EstadoSolicitud;
   usuarioId: number;
@@ -175,7 +186,7 @@ interface FilaSolicitudBloqueada {
   diasSolicitados: string | number;
 }
 
-// Estado de los periodos de la persona justo antes de descontar una solicitud (va al PDF de Talento Humano)
+// Estado de los periodos de la persona antes de descontar una solicitud.
 interface InstantaneaSaldo {
   tomadosPrevios: number;
   disponiblesPrevios: number;
@@ -187,24 +198,23 @@ const MENSAJES: MensajesErrorBD = {
   referenciaInvalida: 'La persona, el area, el cargo o el aprobador indicado no existe en este hospital',
 };
 
-// Estados en los que una solicitud todavia ocupa sus fechas
+// Estados en los que una solicitud todavia ocupa sus fechas.
 const ESTADOS_QUE_OCUPAN = "('PENDIENTE', 'VISTO_BUENO', 'AUTORIZADA')";
 
-// Estados en los que una solicitud tiene dias reservados: aun no se descontaron de ningun periodo
+// Estados en los que una solicitud tiene dias reservados.
 const ESTADOS_QUE_RESERVAN = "('PENDIENTE', 'VISTO_BUENO')";
 
-// Los DECIMAL llegan como texto desde mysql2
+// Los DECIMAL llegan como texto desde mysql2.
 function aNumero(valor: string | number): number {
   return Number.parseFloat(String(valor));
 }
 
-// Los dias se manejan con dos decimales (medio dia): se redondea para no arrastrar errores de coma flotante
+// Redondea los dias a dos decimales para evitar errores de coma flotante.
 function redondear(valor: number): number {
   return Math.round(valor * 100) / 100;
 }
 
-// Las dos comprobaciones sirven fuera de una transaccion (aviso rapido del service)
-// y dentro de ella (la definitiva, con la persona bloqueada)
+// Comprueba solapamientos tanto fuera como dentro de una transaccion.
 async function haySolapamiento(
   conexion: IConexionBD,
   empresaId: number,
@@ -219,10 +229,11 @@ async function haySolapamiento(
      LIMIT 1`,
     [empresaId, usuarioId, fin, inicio],
   );
+
   return filas.length > 0;
 }
 
-// Saldo para pedir: lo que queda en los periodos vigentes menos lo reservado por solicitudes en tramite
+// Calcula el saldo disponible descontando los dias reservados.
 async function leerSaldo(
   conexion: IConexionBD,
   empresaId: number,
@@ -239,49 +250,64 @@ async function leerSaldo(
                      AND s.estado IN ${ESTADOS_QUE_RESERVAN}), 0) AS saldo`,
     [empresaId, usuarioId, fecha, fecha, empresaId, usuarioId],
   );
-  // Nunca se muestra un saldo negativo
+
   return Math.max(0, aNumero(fila?.saldo ?? 0));
 }
 
-// Bloquea la solicitud y comprueba que sigue en tramite: dos decisiones sobre la misma solicitud se hacen una tras otra
+// Bloquea la solicitud y comprueba su estado.
+// Cuando soloPendiente es true, impide cancelar solicitudes en VISTO_BUENO.
 async function bloquearSolicitudEnTramite(
   conexion: IConexionBD,
   empresaId: number,
   solicitudId: number,
+  soloPendiente = false,
 ): Promise<FilaSolicitudBloqueada> {
   const [solicitud] = await conexion.consultar<FilaSolicitudBloqueada>(
     `SELECT estado, usuario_id AS usuarioId, fecha_inicio AS fechaInicio, dias_solicitados AS diasSolicitados
-     FROM solicitudes_vacaciones WHERE empresa_id = ? AND id = ? FOR UPDATE`,
+     FROM solicitudes_vacaciones
+     WHERE empresa_id = ? AND id = ?
+     FOR UPDATE`,
     [empresaId, solicitudId],
   );
+
   if (!solicitud) {
     throw AppError.noEncontrado('La solicitud no existe');
   }
-  if (!ESTADOS_EN_TRAMITE.includes(solicitud.estado)) {
+
+  if (
+    soloPendiente
+      ? solicitud.estado !== 'PENDIENTE'
+      : !ESTADOS_EN_TRAMITE.includes(solicitud.estado)
+  ) {
     throw AppError.conflicto(MENSAJE_PASO_RESUELTO);
   }
+
   return solicitud;
 }
 
-// Bloquea la solicitud y su paso, y comprueba que el paso sigue pendiente y es de quien decide
+// Bloquea la solicitud y su paso, y comprueba que el paso sigue pendiente y pertenece al aprobador.
 async function bloquearDecision(
   conexion: IConexionBD,
   empresaId: number,
   datos: DatosDecision,
 ): Promise<FilaSolicitudBloqueada> {
   const solicitud = await bloquearSolicitudEnTramite(conexion, empresaId, datos.solicitudId);
+
   const [paso] = await conexion.consultar<FilaPasoBloqueado>(
     `SELECT estado, aprobador_id AS aprobadorId FROM solicitud_aprobaciones
-     WHERE empresa_id = ? AND id = ? AND solicitud_id = ? FOR UPDATE`,
+     WHERE empresa_id = ? AND id = ? AND solicitud_id = ?
+     FOR UPDATE`,
     [empresaId, datos.pasoId, datos.solicitudId],
   );
+
   if (!paso || paso.estado !== 'PENDIENTE' || Number(paso.aprobadorId) !== datos.aprobadorId) {
     throw AppError.conflicto(MENSAJE_PASO_RESUELTO);
   }
+
   return solicitud;
 }
 
-// Cierra un paso con su decision; el CHECK de la base exige decidido_at en todo paso que no este pendiente
+// Cierra un paso con su decision.
 async function marcarPaso(
   conexion: IConexionBD,
   empresaId: number,
@@ -296,6 +322,7 @@ async function marcarPaso(
   );
 }
 
+// Registra una notificacion dentro de la misma transaccion de la operacion.
 async function crearNotificacion(
   conexion: IConexionBD,
   empresaId: number,
@@ -309,8 +336,7 @@ async function crearNotificacion(
   );
 }
 
-// Descuento FIFO: consume primero el periodo que caduca antes, entre los vigentes a la fecha de inicio,
-// y deja en solicitud_descuentos de cual salio cada dia (con eso se podra revertir)
+// Descuenta los dias de los periodos vigentes siguiendo el criterio FIFO.
 async function descontarDePeriodos(
   conexion: IConexionBD,
   empresaId: number,
@@ -320,7 +346,8 @@ async function descontarDePeriodos(
   dias: number,
 ): Promise<InstantaneaSaldo> {
   const periodos = await conexion.consultar<FilaPeriodo>(
-    `SELECT id, dias_derecho AS diasDerecho, dias_usados AS diasUsados FROM periodos_vacaciones
+    `SELECT id, dias_derecho AS diasDerecho, dias_usados AS diasUsados
+     FROM periodos_vacaciones
      WHERE empresa_id = ? AND usuario_id = ? AND fecha_inicio <= ? AND fecha_caducidad >= ?
      ORDER BY fecha_caducidad, fecha_inicio, id
      FOR UPDATE`,
@@ -329,14 +356,16 @@ async function descontarDePeriodos(
 
   let tomadosPrevios = 0;
   let disponiblesPrevios = 0;
+
   for (const periodo of periodos) {
     tomadosPrevios += aNumero(periodo.diasUsados);
     disponiblesPrevios += aNumero(periodo.diasDerecho) - aNumero(periodo.diasUsados);
   }
+
   tomadosPrevios = redondear(tomadosPrevios);
   disponiblesPrevios = redondear(disponiblesPrevios);
 
-  // Recomprobacion con los periodos bloqueados: si ya no alcanza, no se autoriza
+  // Recomprueba el saldo con los periodos bloqueados.
   if (disponiblesPrevios < dias) {
     throw AppError.reglaDeNegocio(
       `El saldo de la persona ya no alcanza: tiene ${String(disponiblesPrevios)} dias disponibles y la solicitud pide ${String(dias)}`,
@@ -344,25 +373,33 @@ async function descontarDePeriodos(
   }
 
   let porDescontar = dias;
+
   for (const periodo of periodos) {
     if (porDescontar <= 0) {
       break;
     }
+
     const libre = redondear(aNumero(periodo.diasDerecho) - aNumero(periodo.diasUsados));
+
     if (libre <= 0) {
       continue;
     }
+
     const toma = Math.min(libre, porDescontar);
+
     await conexion.ejecutar(
       'UPDATE periodos_vacaciones SET dias_usados = dias_usados + ? WHERE empresa_id = ? AND id = ?',
       [toma, empresaId, periodo.id],
     );
+
     await conexion.ejecutar(
       'INSERT INTO solicitud_descuentos (solicitud_id, periodo_id, dias) VALUES (?, ?, ?)',
       [solicitudId, periodo.id, toma],
     );
+
     porDescontar = redondear(porDescontar - toma);
   }
+
   return { tomadosPrevios, disponiblesPrevios };
 }
 
@@ -371,7 +408,9 @@ function aPersona(
   nombres: string | null,
   apellidos: string | null,
 ): { id: number; nombres: string; apellidos: string } | null {
-  return id !== null && nombres !== null && apellidos !== null ? { id, nombres, apellidos } : null;
+  return id !== null && nombres !== null && apellidos !== null
+    ? { id, nombres, apellidos }
+    : null;
 }
 
 function aPaso(fila: FilaPaso): PasoAprobacion {
@@ -381,9 +420,17 @@ function aPaso(fila: FilaPaso): PasoAprobacion {
     tipoAprobador: fila.tipoAprobador,
     origen: fila.origen,
     estado: fila.estado,
-    aprobador: { id: fila.aprobadorId, nombres: fila.aprobadorNombres, apellidos: fila.aprobadorApellidos },
+    aprobador: {
+      id: fila.aprobadorId,
+      nombres: fila.aprobadorNombres,
+      apellidos: fila.aprobadorApellidos,
+    },
     aprobadorDisponible: Number(fila.aprobadorDisponible) === 1,
-    decididoPor: aPersona(fila.decididoPorId, fila.decididoPorNombres, fila.decididoPorApellidos),
+    decididoPor: aPersona(
+      fila.decididoPorId,
+      fila.decididoPorNombres,
+      fila.decididoPorApellidos,
+    ),
     motivo: fila.motivo,
     asignadoAt: fila.asignadoAt,
     venceAt: fila.venceAt,
@@ -392,7 +439,7 @@ function aPaso(fila: FilaPaso): PasoAprobacion {
 }
 
 export class VacacionesRepository implements IVacacionesRepository {
-  constructor(private readonly bd: IBaseDatos) {}
+  constructor(private readonly bd: IBaseDatos) { }
 
   async buscarSolicitante(empresaId: number, usuarioId: number): Promise<Solicitante | null> {
     const [fila] = await this.bd.consultar<FilaSolicitante>(
@@ -402,18 +449,23 @@ export class VacacionesRepository implements IVacacionesRepository {
        FROM usuarios u
        INNER JOIN cargos c ON c.empresa_id = u.empresa_id AND c.id = u.cargo_id
        INNER JOIN empresas e ON e.id = u.empresa_id
-       WHERE u.empresa_id = ? AND u.id = ? LIMIT 1`,
+       WHERE u.empresa_id = ? AND u.id = ?
+       LIMIT 1`,
       [empresaId, usuarioId],
     );
+
     return fila ?? null;
   }
 
   async listarRuta(empresaId: number, nivelJerarquico: number): Promise<TipoAprobador[]> {
     const filas = await this.bd.consultar<{ tipoAprobador: TipoAprobador }>(
-      `SELECT tipo_aprobador AS tipoAprobador FROM rutas_aprobacion
-       WHERE empresa_id = ? AND nivel_solicitante = ? ORDER BY orden`,
+      `SELECT tipo_aprobador AS tipoAprobador
+       FROM rutas_aprobacion
+       WHERE empresa_id = ? AND nivel_solicitante = ?
+       ORDER BY orden`,
       [empresaId, nivelJerarquico],
     );
+
     return filas.map((fila) => fila.tipoAprobador);
   }
 
@@ -422,45 +474,74 @@ export class VacacionesRepository implements IVacacionesRepository {
     tipo: TipoAprobador,
     solicitante: Solicitante,
   ): Promise<number | null> {
-    // Cada tipo se resuelve con su consulta fija; siempre se exige que la persona este activa
+    // Cada tipo se resuelve con su consulta fija y exige que la persona este activa.
     let filas: { id: number }[];
+
     switch (tipo) {
       case 'JEFE_INMEDIATO':
         if (solicitante.jefeInmediatoId === null) {
           return null;
         }
+
         filas = await this.bd.consultar<{ id: number }>(
-          "SELECT id FROM usuarios WHERE empresa_id = ? AND id = ? AND estado = 'ACTIVO' LIMIT 1",
+          `SELECT id
+           FROM usuarios
+           WHERE empresa_id = ? AND id = ? AND estado = 'ACTIVO'
+           LIMIT 1`,
           [empresaId, solicitante.jefeInmediatoId],
         );
         break;
+
       case 'JEFE_AREA':
         filas = await this.bd.consultar<{ id: number }>(
-          `SELECT u.id AS id FROM areas a
-           INNER JOIN usuarios u ON u.empresa_id = a.empresa_id AND u.id = a.jefe_id AND u.estado = 'ACTIVO'
-           WHERE a.empresa_id = ? AND a.id = ? LIMIT 1`,
+          `SELECT u.id AS id
+           FROM areas a
+           INNER JOIN usuarios u
+             ON u.empresa_id = a.empresa_id
+             AND u.id = a.jefe_id
+             AND u.estado = 'ACTIVO'
+           WHERE a.empresa_id = ? AND a.id = ?
+           LIMIT 1`,
           [empresaId, solicitante.areaId],
         );
         break;
+
       case 'AUTORIDAD_MAXIMA':
+        // El Rector se identifica por nivel jerarquico 1, no por su rol.
+        // Se recuperan todos para comprobar que exista exactamente uno activo.
         filas = await this.bd.consultar<{ id: number }>(
-          `SELECT u.id AS id FROM usuarios u
-           INNER JOIN cargos c ON c.empresa_id = u.empresa_id AND c.id = u.cargo_id
-           WHERE u.empresa_id = ? AND c.nivel_jerarquico = 1 AND u.estado = 'ACTIVO'
-           ORDER BY u.id LIMIT 1`,
+          `SELECT u.id AS id
+           FROM usuarios u
+           INNER JOIN cargos c
+             ON c.empresa_id = u.empresa_id
+             AND c.id = u.cargo_id
+           WHERE u.empresa_id = ?
+             AND c.nivel_jerarquico = 1
+             AND u.estado = 'ACTIVO'`,
           [empresaId],
         );
         break;
+
       case 'SUPERADMIN':
         filas = await this.bd.consultar<{ id: number }>(
-          `SELECT u.id AS id FROM usuarios u
+          `SELECT u.id AS id
+           FROM usuarios u
            INNER JOIN roles r ON r.id = u.rol_id
-           WHERE u.empresa_id = ? AND r.codigo = 'SUPERADMIN' AND u.estado = 'ACTIVO'
-           ORDER BY u.id LIMIT 1`,
+           WHERE u.empresa_id = ?
+             AND r.codigo = 'SUPERADMIN'
+             AND u.estado = 'ACTIVO'
+           ORDER BY u.id
+           LIMIT 1`,
           [empresaId],
         );
         break;
     }
+
+    if (tipo === 'AUTORIDAD_MAXIMA') {
+      const rector = filas[0];
+      return filas.length === 1 && rector !== undefined ? rector.id : null;
+    }
+
     return filas[0]?.id ?? null;
   }
 
@@ -496,10 +577,12 @@ export class VacacionesRepository implements IVacacionesRepository {
   ): Promise<boolean> {
     try {
       return await this.bd.transaccion(async (conexion) => {
-        // Bloquea primero la solicitud para serializar las decisiones y los escalamientos
+        // Bloquea primero la solicitud para serializar decisiones y escalamientos.
         const [solicitud] = await conexion.consultar<{ estado: EstadoSolicitud }>(
-          `SELECT estado FROM solicitudes_vacaciones
-           WHERE empresa_id = ? AND id = ? FOR UPDATE`,
+          `SELECT estado
+           FROM solicitudes_vacaciones
+           WHERE empresa_id = ? AND id = ?
+           FOR UPDATE`,
           [empresaId, datos.solicitudId],
         );
 
@@ -507,7 +590,7 @@ export class VacacionesRepository implements IVacacionesRepository {
           return false;
         }
 
-        // Revalida el vencimiento y el estado despues de obtener el bloqueo
+        // Revalida el vencimiento y el estado despues de obtener el bloqueo.
         const [paso] = await conexion.consultar<FilaPasoVencidoBloqueado>(
           `SELECT estado, tipo_aprobador AS tipoAprobador, vence_at AS venceAt
            FROM solicitud_aprobaciones
@@ -526,7 +609,7 @@ export class VacacionesRepository implements IVacacionesRepository {
           return false;
         }
 
-        // El paso vencido queda cerrado antes de insertar el nuevo paso pendiente
+        // El paso vencido queda cerrado antes de insertar el nuevo paso pendiente.
         await conexion.ejecutar(
           `UPDATE solicitud_aprobaciones
            SET estado = 'ESCALADO', decidido_por_id = NULL, decidido_at = ?, motivo = ?
@@ -565,6 +648,7 @@ export class VacacionesRepository implements IVacacionesRepository {
       'SELECT fecha FROM feriados WHERE fecha BETWEEN ? AND ? ORDER BY fecha',
       [inicio, fin],
     );
+
     return filas.map((fila) => fila.fecha);
   }
 
@@ -583,39 +667,46 @@ export class VacacionesRepository implements IVacacionesRepository {
 
   async registrarSolicitud(empresaId: number, datos: DatosNuevaSolicitud): Promise<number> {
     const anio = Number.parseFloat(datos.fechaSolicitud.slice(0, 4));
+
     try {
       return await this.bd.transaccion(async (conexion) => {
-        // Bloquea la fila de la persona: dos solicitudes suyas a la vez se registran una tras otra y la segunda
-        // ve lo que dejo la primera. Va antes de cualquier lectura sin bloqueo, porque InnoDB toma su instantanea
-        // en la primera de ellas.
-        await conexion.consultar('SELECT id FROM usuarios WHERE empresa_id = ? AND id = ? FOR UPDATE', [
-          empresaId,
-          datos.usuarioId,
-        ]);
+        // Bloquea la fila de la persona para serializar sus solicitudes simultaneas.
+        await conexion.consultar(
+          'SELECT id FROM usuarios WHERE empresa_id = ? AND id = ? FOR UPDATE',
+          [empresaId, datos.usuarioId],
+        );
 
-        // Comprobacion definitiva: el service ya avisa antes, pero solo aqui el resultado no puede cambiar
+        // Comprueba definitivamente que no exista solapamiento.
         if (await haySolapamiento(conexion, empresaId, datos.usuarioId, datos.fechaInicio, datos.fechaFin)) {
           throw AppError.conflicto(MENSAJE_SOLAPAMIENTO);
         }
+
         const saldo = await leerSaldo(conexion, empresaId, datos.usuarioId, datos.fechaInicio);
+
         if (saldo < datos.diasSolicitados) {
-          throw AppError.reglaDeNegocio(mensajeSaldoInsuficiente(saldo, datos.diasSolicitados));
+          throw AppError.reglaDeNegocio(
+            mensajeSaldoInsuficiente(saldo, datos.diasSolicitados),
+          );
         }
 
-        // Contador atomico por hospital y anio: LAST_INSERT_ID(expr) devuelve el numero asignado
+        // Contador atomico por hospital y anio.
         const secuencia = await conexion.ejecutar(
-          `INSERT INTO secuencias_tramite (empresa_id, anio, ultimo) VALUES (?, ?, LAST_INSERT_ID(1))
+          `INSERT INTO secuencias_tramite (empresa_id, anio, ultimo)
+           VALUES (?, ?, LAST_INSERT_ID(1))
            ON DUPLICATE KEY UPDATE ultimo = LAST_INSERT_ID(ultimo + 1)`,
           [empresaId, anio],
         );
+
         const ordenTramite = `VAC-${anio}-${String(secuencia.idInsertado).padStart(6, '0')}`;
 
-        // El tipo (programada o no) lo deriva la base de fecha_solicitud y fecha_inicio
+        // Conserva el umbral institucional aplicado al crear la solicitud.
+        // La columna requiere la migracion 011.
         const solicitud = await conexion.ejecutar(
           `INSERT INTO solicitudes_vacaciones
              (empresa_id, orden_tramite, usuario_id, area_id, cargo_id, lugar, telefono_localizacion,
-              solicitado_at, fecha_solicitud, fecha_inicio, fecha_fin, justificacion, dias_solicitados)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              solicitado_at, fecha_solicitud, dias_anticipacion_aplicada,
+              fecha_inicio, fecha_fin, justificacion, dias_solicitados)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             empresaId,
             ordenTramite,
@@ -626,6 +717,7 @@ export class VacacionesRepository implements IVacacionesRepository {
             datos.telefonoLocalizacion,
             datos.solicitadoAt,
             datos.fechaSolicitud,
+            datos.diasAnticipacionAplicada,
             datos.fechaInicio,
             datos.fechaFin,
             datos.justificacion,
@@ -634,25 +726,37 @@ export class VacacionesRepository implements IVacacionesRepository {
         );
 
         const paso = datos.primerPaso;
+
         await conexion.ejecutar(
           `INSERT INTO solicitud_aprobaciones
              (empresa_id, solicitud_id, orden, tipo_aprobador, origen, aprobador_id, estado, asignado_at, vence_at)
            VALUES (?, ?, 1, ?, 'RUTA', ?, 'PENDIENTE', ?, ?)`,
-          [empresaId, solicitud.idInsertado, paso.tipoAprobador, paso.aprobadorId, paso.asignadoAt, paso.venceAt],
+          [
+            empresaId,
+            solicitud.idInsertado,
+            paso.tipoAprobador,
+            paso.aprobadorId,
+            paso.asignadoAt,
+            paso.venceAt,
+          ],
         );
+
         return solicitud.idInsertado;
       });
     } catch (error) {
-      // Un AppError (conflicto o regla de negocio) pasa tal cual; los errores de MySQL se traducen
       throw traducirErrorBD(error, MENSAJES);
     }
   }
 
-  async aprobarPasoIntermedio(empresaId: number, datos: DatosAprobacionIntermedia): Promise<void> {
+  async aprobarPasoIntermedio(
+    empresaId: number,
+    datos: DatosAprobacionIntermedia,
+  ): Promise<void> {
     try {
       await this.bd.transaccion(async (conexion) => {
         await bloquearDecision(conexion, empresaId, datos);
         await marcarPaso(conexion, empresaId, datos, 'APROBADO');
+
         await conexion.ejecutar(
           `UPDATE solicitudes_vacaciones
            SET estado = 'VISTO_BUENO', visto_bueno_por_id = ?, visto_bueno_at = ?
@@ -660,8 +764,9 @@ export class VacacionesRepository implements IVacacionesRepository {
           [datos.aprobadorId, datos.decididoAt, empresaId, datos.solicitudId],
         );
 
-        // El paso anterior ya no esta pendiente: recien ahora el indice unico deja abrir el siguiente
+        // Abre el paso siguiente despues de cerrar el anterior.
         const siguiente = datos.siguiente;
+
         await conexion.ejecutar(
           `INSERT INTO solicitud_aprobaciones
              (empresa_id, solicitud_id, orden, tipo_aprobador, origen, aprobador_id, estado, asignado_at, vence_at)
@@ -682,13 +787,16 @@ export class VacacionesRepository implements IVacacionesRepository {
     }
   }
 
-  async autorizarSolicitud(empresaId: number, datos: DatosResolucionFinal): Promise<void> {
+  async autorizarSolicitud(
+    empresaId: number,
+    datos: DatosResolucionFinal,
+  ): Promise<void> {
     try {
       await this.bd.transaccion(async (conexion) => {
         const solicitud = await bloquearDecision(conexion, empresaId, datos);
         await marcarPaso(conexion, empresaId, datos, 'APROBADO');
 
-        // Los dias reservados pasan a descontarse de los periodos
+        // Los dias reservados pasan a descontarse de los periodos.
         const saldo = await descontarDePeriodos(
           conexion,
           empresaId,
@@ -697,6 +805,7 @@ export class VacacionesRepository implements IVacacionesRepository {
           solicitud.fechaInicio,
           aNumero(solicitud.diasSolicitados),
         );
+
         await conexion.ejecutar(
           `UPDATE solicitudes_vacaciones
            SET estado = 'AUTORIZADA', resuelto_por_id = ?, fecha_resolucion = ?,
@@ -711,6 +820,7 @@ export class VacacionesRepository implements IVacacionesRepository {
             datos.solicitudId,
           ],
         );
+
         await crearNotificacion(conexion, empresaId, datos.solicitudId, datos.notificacion);
       });
     } catch (error) {
@@ -718,17 +828,28 @@ export class VacacionesRepository implements IVacacionesRepository {
     }
   }
 
-  async negarSolicitud(empresaId: number, datos: DatosResolucionFinal): Promise<void> {
+  async negarSolicitud(
+    empresaId: number,
+    datos: DatosResolucionFinal,
+  ): Promise<void> {
     try {
       await this.bd.transaccion(async (conexion) => {
         await bloquearDecision(conexion, empresaId, datos);
         await marcarPaso(conexion, empresaId, datos, 'NEGADO');
+
         await conexion.ejecutar(
           `UPDATE solicitudes_vacaciones
            SET estado = 'NEGADA', resuelto_por_id = ?, fecha_resolucion = ?, motivo_resolucion = ?
            WHERE empresa_id = ? AND id = ?`,
-          [datos.aprobadorId, datos.decididoAt, datos.motivo, empresaId, datos.solicitudId],
+          [
+            datos.aprobadorId,
+            datos.decididoAt,
+            datos.motivo,
+            empresaId,
+            datos.solicitudId,
+          ],
         );
+
         await crearNotificacion(conexion, empresaId, datos.solicitudId, datos.notificacion);
       });
     } catch (error) {
@@ -736,26 +857,43 @@ export class VacacionesRepository implements IVacacionesRepository {
     }
   }
 
-  async cancelarSolicitud(empresaId: number, datos: DatosCancelacion): Promise<void> {
+  async cancelarSolicitud(
+    empresaId: number,
+    datos: DatosCancelacion,
+  ): Promise<void> {
     try {
       await this.bd.transaccion(async (conexion) => {
-        const solicitud = await bloquearSolicitudEnTramite(conexion, empresaId, datos.solicitudId);
+        // La solicitud debe seguir PENDIENTE al obtener el bloqueo transaccional.
+        const solicitud = await bloquearSolicitudEnTramite(
+          conexion,
+          empresaId,
+          datos.solicitudId,
+          true,
+        );
+
         if (Number(solicitud.usuarioId) !== datos.usuarioId) {
           throw AppError.prohibido('Solo quien la solicito puede cancelarla');
         }
 
-        // El paso pendiente se cierra como CANCELADO; la reserva de dias se libera sola al cambiar el estado
+        // Cierra el paso pendiente y libera la reserva al cancelar la solicitud.
         await conexion.ejecutar(
           `UPDATE solicitud_aprobaciones
            SET estado = 'CANCELADO', decidido_por_id = ?, decidido_at = ?
            WHERE empresa_id = ? AND solicitud_id = ? AND estado = 'PENDIENTE'`,
           [datos.usuarioId, datos.canceladaAt, empresaId, datos.solicitudId],
         );
+
         await conexion.ejecutar(
           `UPDATE solicitudes_vacaciones
            SET estado = 'CANCELADA', resuelto_por_id = ?, fecha_resolucion = ?, motivo_resolucion = ?
            WHERE empresa_id = ? AND id = ?`,
-          [datos.usuarioId, datos.canceladaAt, datos.motivo, empresaId, datos.solicitudId],
+          [
+            datos.usuarioId,
+            datos.canceladaAt,
+            datos.motivo,
+            empresaId,
+            datos.solicitudId,
+          ],
         );
       });
     } catch (error) {
@@ -763,7 +901,11 @@ export class VacacionesRepository implements IVacacionesRepository {
     }
   }
 
-  async obtenerSolicitud(empresaId: number, id: number, hoy: string): Promise<SolicitudDetalle | null> {
+  async obtenerSolicitud(
+    empresaId: number,
+    id: number,
+    hoy: string,
+  ): Promise<SolicitudDetalle | null> {
     const [fila] = await this.bd.consultar<FilaSolicitud>(
       `SELECT s.id AS id, s.orden_tramite AS ordenTramite, s.usuario_id AS usuarioId,
               u.cedula AS cedula, u.nombres AS nombres, u.apellidos AS apellidos,
@@ -778,14 +920,16 @@ export class VacacionesRepository implements IVacacionesRepository {
        INNER JOIN usuarios u ON u.empresa_id = s.empresa_id AND u.id = s.usuario_id
        INNER JOIN areas a ON a.empresa_id = s.empresa_id AND a.id = s.area_id
        INNER JOIN cargos c ON c.empresa_id = s.empresa_id AND c.id = s.cargo_id
-       WHERE s.empresa_id = ? AND s.id = ? LIMIT 1`,
+       WHERE s.empresa_id = ? AND s.id = ?
+       LIMIT 1`,
       [empresaId, id],
     );
+
     if (!fila) {
       return null;
     }
 
-    // Disponible: activo y sin vacaciones autorizadas que cubran el dia de hoy
+    // Disponible: activo y sin vacaciones autorizadas que cubran el dia de hoy.
     const pasos = await this.bd.consultar<FilaPaso>(
       `SELECT p.id AS id, p.orden AS orden, p.tipo_aprobador AS tipoAprobador, p.origen AS origen,
               p.estado AS estado, p.motivo AS motivo, p.asignado_at AS asignadoAt,
@@ -839,12 +983,15 @@ export class VacacionesRepository implements IVacacionesRepository {
   ): Promise<{ solicitudes: SolicitudResumen[]; total: number }> {
     const condiciones = 'WHERE s.empresa_id = ? AND s.usuario_id = ?';
     const valores: ValorSql[] = [empresaId, usuarioId];
+
     let filtroEstado = '';
+
     if (filtros.estado !== undefined) {
       filtroEstado = ' AND s.estado = ?';
       valores.push(filtros.estado);
     }
-    // Enteros ya validados por Zod: se escriben en la consulta porque LIMIT no admite parametros de forma fiable
+
+    // Enteros validados por Zod para construir los parametros de paginacion.
     const limite = Math.trunc(filtros.porPagina);
     const desplazamiento = (Math.trunc(filtros.pagina) - 1) * limite;
 
@@ -854,17 +1001,22 @@ export class VacacionesRepository implements IVacacionesRepository {
                 s.fecha_fin AS fechaFin, s.dias_solicitados AS diasSolicitados, s.tipo AS tipo,
                 s.estado AS estado, s.solicitado_at AS solicitadoAt
          FROM solicitudes_vacaciones s ${condiciones}${filtroEstado}
-         ORDER BY s.solicitado_at DESC, s.id DESC LIMIT ${limite} OFFSET ${desplazamiento}`,
+         ORDER BY s.solicitado_at DESC, s.id DESC
+         LIMIT ${limite} OFFSET ${desplazamiento}`,
         valores,
       ),
       this.bd.consultar<{ total: number }>(
-        `SELECT COUNT(*) AS total FROM solicitudes_vacaciones s ${condiciones}${filtroEstado}`,
+        `SELECT COUNT(*) AS total
+         FROM solicitudes_vacaciones s ${condiciones}${filtroEstado}`,
         valores,
       ),
     ]);
 
     return {
-      solicitudes: filas.map((fila) => ({ ...fila, diasSolicitados: aNumero(fila.diasSolicitados) })),
+      solicitudes: filas.map((fila) => ({
+        ...fila,
+        diasSolicitados: aNumero(fila.diasSolicitados),
+      })),
       total: Number.parseFloat(String(conteo[0]?.total ?? 0)),
     };
   }

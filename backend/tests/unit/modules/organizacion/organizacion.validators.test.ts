@@ -7,6 +7,8 @@ import {
   esquemaId,
 } from '../../../../src/modules/organizacion/organizacion.validators';
 
+import { esquemaConfigurarDiasVacacionesArea } from '../../../../src/modules/organizacion/organizacion.validators';
+
 describe('esquemaCrearArea', () => {
   it('recorta el nombre y deja el jefe en null por defecto', () => {
     expect(esquemaCrearArea.parse({ detalle: '  Emergencia ' })).toEqual({
@@ -44,5 +46,42 @@ describe('esquemaId', () => {
     expect(esquemaId.parse({ id: '12' })).toEqual({ id: 12 });
     expect(() => esquemaId.parse({ id: 'abc' })).toThrow();
     expect(() => esquemaId.parse({ id: '0' })).toThrow();
+  });
+});
+
+describe('esquemaConfigurarDiasVacacionesArea', () => {
+  it('acepta dias de vacaciones con decimales', () => {
+    expect(esquemaConfigurarDiasVacacionesArea.parse({ diasVacaciones: 25.5 })).toEqual({
+      diasVacaciones: 25.5,
+    });
+  });
+
+  it('acepta null para restablecer la herencia institucional', () => {
+    expect(esquemaConfigurarDiasVacacionesArea.parse({ diasVacaciones: null })).toEqual({
+      diasVacaciones: null,
+    });
+  });
+
+  it('rechaza valores fuera del rango permitido', () => {
+    for (const diasVacaciones of [0, -1, 367, 25.555]) {
+      expect(() =>
+        esquemaConfigurarDiasVacacionesArea.parse({ diasVacaciones }),
+      ).toThrow();
+    }
+  });
+
+  it('rechaza cadenas, campos adicionales y cuerpos vacios', () => {
+    expect(() =>
+      esquemaConfigurarDiasVacacionesArea.parse({ diasVacaciones: '25' }),
+    ).toThrow();
+
+    expect(() =>
+      esquemaConfigurarDiasVacacionesArea.parse({
+        diasVacaciones: 25,
+        empresaId: 9,
+      }),
+    ).toThrow();
+
+    expect(() => esquemaConfigurarDiasVacacionesArea.parse({})).toThrow();
   });
 });

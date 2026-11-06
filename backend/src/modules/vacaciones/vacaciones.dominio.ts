@@ -1,30 +1,30 @@
 // Tipos y constantes del dominio de vacaciones: solicitudes, pasos de aprobacion y sus estados.
 // No dependen de Express ni de MySQL.
 
-// Estados de la solicitud; VISTO_BUENO solo aparece si la ruta del hospital tiene mas de un paso
+// Estados de la solicitud; VISTO_BUENO aparece si la ruta tiene mas de un paso.
 export type EstadoSolicitud = 'PENDIENTE' | 'VISTO_BUENO' | 'AUTORIZADA' | 'NEGADA' | 'CANCELADA';
 
-// Estados en los que la solicitud sigue en tramite: aun se puede decidir o cancelar y sus dias estan reservados
+// Estados en los que la solicitud sigue en tramite.
 export const ESTADOS_EN_TRAMITE: readonly EstadoSolicitud[] = ['PENDIENTE', 'VISTO_BUENO'];
 
-// Programada si faltan 7 dias o mas desde la solicitud hasta el inicio; la base lo deriva igual
+// Tipo de solicitud calculado con los dias de anticipacion aplicados al momento de crearla.
 export type TipoSolicitud = 'PROGRAMADA' | 'NO_PROGRAMADA';
 
-// Quien debe aprobar un paso de la ruta
+// Quien debe aprobar un paso de la ruta.
 export type TipoAprobador = 'JEFE_INMEDIATO' | 'JEFE_AREA' | 'AUTORIDAD_MAXIMA' | 'SUPERADMIN';
 
 export type EstadoPaso = 'PENDIENTE' | 'APROBADO' | 'NEGADO' | 'ESCALADO' | 'CANCELADO';
 
-// De donde viene un paso: de la ruta, o de un escalamiento (manual de Talento Humano o por plazo vencido)
+// De donde viene un paso: de la ruta o de un escalamiento.
 export type OrigenPaso = 'RUTA' | 'ESCALAMIENTO_MANUAL' | 'ESCALAMIENTO_PLAZO';
 
-// Que le avisa una notificacion a la persona que solicito
+// Que le avisa una notificacion a la persona que solicito.
 export type TipoNotificacion = 'SOLICITUD_APROBADA' | 'SOLICITUD_NEGADA';
 
-// Dias de anticipacion desde los que una solicitud es programada (la regla vive en shared/utils/fechas)
+// Compatibilidad con referencias existentes al valor historico predeterminado.
 export { DIAS_ANTICIPACION_PROGRAMADA } from '../../shared/utils/fechas';
 
-// Mensajes de las reglas que el service avisa antes y el repository comprueba de nuevo dentro de la transaccion
+// Mensajes de las reglas que el service avisa y el repository comprueba dentro de la transaccion.
 export const MENSAJE_SOLAPAMIENTO = 'Ya tienes una solicitud de vacaciones en esas fechas';
 export const MENSAJE_PASO_RESUELTO =
   'La solicitud ya fue resuelta o este paso ya no esta pendiente de tu decision';
@@ -39,7 +39,7 @@ export interface PersonaResumen {
   apellidos: string;
 }
 
-// Un paso de la ruta de aprobacion de una solicitud, con quien debe decidirlo y quien lo decidio
+// Un paso de la ruta de aprobacion, con quien debe decidirlo y quien lo decidio.
 export interface PasoAprobacion {
   id: number;
   orden: number;
@@ -47,17 +47,17 @@ export interface PasoAprobacion {
   origen: OrigenPaso;
   estado: EstadoPaso;
   aprobador: PersonaResumen;
-  // false si el aprobador esta dado de baja o tiene vacaciones autorizadas hoy
+  // false si el aprobador esta dado de baja o tiene vacaciones autorizadas hoy.
   aprobadorDisponible: boolean;
   decididoPor: PersonaResumen | null;
   motivo: string | null;
   asignadoAt: Date;
-  // Limite para responder; pasado ese instante la solicitud puede escalarse
+  // Limite para responder; pasado ese instante la solicitud puede escalarse.
   venceAt: Date | null;
   decididoAt: Date | null;
 }
 
-// Paso pendiente cuyo plazo de aprobacion ya vencio
+// Paso pendiente cuyo plazo de aprobacion ya vencio.
 export interface PasoVencido {
   empresaId: number;
   solicitudId: number;
@@ -67,7 +67,7 @@ export interface PasoVencido {
   solicitanteId: number;
 }
 
-// Datos necesarios para escalar un paso vencido dentro de una transaccion
+// Datos necesarios para escalar un paso vencido dentro de una transaccion.
 export interface DatosEscalamientoPlazo {
   solicitudId: number;
   pasoId: number;
@@ -79,7 +79,7 @@ export interface DatosEscalamientoPlazo {
   motivo: string;
 }
 
-// Solicitud completa, con sus pasos de aprobacion en orden
+// Solicitud completa, con sus pasos de aprobacion en orden.
 export interface SolicitudDetalle {
   id: number;
   ordenTramite: string;
@@ -89,7 +89,7 @@ export interface SolicitudDetalle {
   lugar: string;
   telefonoLocalizacion: string | null;
   solicitadoAt: Date;
-  // Fecha de calendario de la solicitud en la zona del hospital (de ella sale si es programada)
+  // Fecha calendario de la solicitud en la zona del hospital.
   fechaSolicitud: string;
   fechaInicio: string;
   fechaFin: string;
@@ -102,7 +102,7 @@ export interface SolicitudDetalle {
   pasos: PasoAprobacion[];
 }
 
-// Fila de las listas: lo necesario para mostrar la solicitud sin sus pasos
+// Fila de las listas: lo necesario para mostrar la solicitud sin sus pasos.
 export interface SolicitudResumen {
   id: number;
   ordenTramite: string;
@@ -127,21 +127,21 @@ export interface PaginaSolicitudes {
   porPagina: number;
 }
 
-// Datos de la persona que solicita, los que el service necesita para validar y elegir la ruta
+// Datos de la persona que solicita, necesarios para validar y elegir la ruta.
 export interface Solicitante {
   id: number;
   areaId: number;
   cargoId: number;
-  // cargos.nivel_jerarquico: define la ruta de aprobacion
+  // cargos.nivel_jerarquico define la ruta de aprobacion.
   nivelJerarquico: number;
   telefono: string | null;
   jefeInmediatoId: number | null;
   estado: 'ACTIVO' | 'INACTIVO';
-  // Lugar que se imprime en la solicitud (el de su hospital)
+  // Lugar que se imprime en la solicitud.
   lugar: string;
 }
 
-// Datos del primer paso que se crea junto con la solicitud
+// Datos del primer paso que se crea junto con la solicitud.
 export interface DatosPrimerPaso {
   tipoAprobador: TipoAprobador;
   aprobadorId: number;
@@ -149,12 +149,12 @@ export interface DatosPrimerPaso {
   venceAt: Date;
 }
 
-// Paso que se abre cuando el anterior se aprueba y la ruta tiene mas pasos
+// Paso que se abre cuando el anterior se aprueba y la ruta tiene mas pasos.
 export interface DatosSiguientePaso extends DatosPrimerPaso {
   orden: number;
 }
 
-// Todo lo que se guarda al registrar una solicitud (la solicitud y su primer paso se guardan juntos)
+// Todo lo que se guarda al registrar una solicitud y su primer paso.
 export interface DatosNuevaSolicitud {
   usuarioId: number;
   areaId: number;
@@ -163,6 +163,8 @@ export interface DatosNuevaSolicitud {
   telefonoLocalizacion: string | null;
   solicitadoAt: Date;
   fechaSolicitud: string;
+  // Umbral institucional vigente al crear la solicitud; los historicos no se recalculan.
+  diasAnticipacionAplicada: number;
   fechaInicio: string;
   fechaFin: string;
   diasSolicitados: number;
@@ -170,59 +172,41 @@ export interface DatosNuevaSolicitud {
   primerPaso: DatosPrimerPaso;
 }
 
-// Aviso para la persona que solicito; el id de la solicitud lo pone el repository
+// Aviso para la persona que solicito; el id de la solicitud lo pone el repository.
 export interface NotificacionNueva {
   usuarioId: number;
   tipo: TipoNotificacion;
   mensaje: string;
 }
 
-// Decision de quien debe aprobar el paso pendiente de una solicitud
+// Decision de quien resuelve el paso pendiente, directamente o por delegacion.
 export interface DatosDecision {
   solicitudId: number;
   pasoId: number;
-  // Debe seguir siendo la persona asignada al paso cuando se guarda la decision
+  // Responsable original al que se asigno el paso.
   aprobadorId: number;
+  // Usuario que ejecuta realmente la decision.
+  decididoPorId: number;
+  // Delegacion utilizada; null cuando decide el responsable original.
+  delegacionId: number | null;
   decididoAt: Date;
   motivo: string | null;
 }
 
-// Aprueba un paso que no es el ultimo: la solicitud queda en VISTO_BUENO y se abre el siguiente paso
+// Aprueba un paso intermedio: abre el siguiente paso.
 export interface DatosAprobacionIntermedia extends DatosDecision {
   siguiente: DatosSiguientePaso;
 }
 
-// Aprueba el ultimo paso (autoriza) o niega: cierra la solicitud y avisa a quien la pidio
+// Aprueba el ultimo paso o niega: cierra la solicitud y avisa a quien la pidio.
 export interface DatosResolucionFinal extends DatosDecision {
   notificacion: NotificacionNueva;
 }
 
-// La persona cancela su propia solicitud mientras sigue en tramite
+// La persona cancela su propia solicitud mientras sigue en tramite.
 export interface DatosCancelacion {
   solicitudId: number;
   usuarioId: number;
   canceladaAt: Date;
   motivo: string | null;
-}
-
-/** Paso pendiente cuyo plazo de aprobación ya venció. */
-export interface PasoVencido {
-  empresaId: number;
-  solicitudId: number;
-  pasoId: number;
-  orden: number;
-  tipoAprobador: TipoAprobador;
-  solicitanteId: number;
-}
-
-/** Datos necesarios para escalar un paso vencido dentro de una transacción. */
-export interface DatosEscalamientoPlazo {
-  solicitudId: number;
-  pasoId: number;
-  nuevoTipoAprobador: TipoAprobador;
-  nuevoAprobadorId: number;
-  nuevaOrden: number;
-  escaladoAt: Date;
-  nuevaVenceAt: Date;
-  motivo: string;
 }

@@ -735,7 +735,7 @@ export function crearVacacionesEnMemoria(): VacacionesEnMemoria {
           fechaFin: datos.fechaFin,
           diasSolicitados: datos.diasSolicitados,
           justificacion: datos.justificacion,
-          tipo: diasAnticipacion >= 7
+          tipo: diasAnticipacion >= datos.diasAnticipacionAplicada
             ? 'PROGRAMADA'
             : 'NO_PROGRAMADA',
           estado: 'PENDIENTE',

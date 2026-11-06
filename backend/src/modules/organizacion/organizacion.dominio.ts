@@ -21,6 +21,7 @@ export interface Area {
   jefe: JefeArea | null;
   parentId: number | null;
   procesoId: number | null;
+  diasVacaciones: number | null;
 }
 
 // Area con sus subareas anidadas, para pintar la estructura del hospital

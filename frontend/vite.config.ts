@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/api': {
-          target: entorno.DEV_PROXY_TARGET ?? 'http://localhost:3000',
+          target: entorno.DEV_PROXY_TARGET ?? 'http://localhost:3003',
           changeOrigin: true,
         },
       },
@@ -36,6 +36,12 @@ export default defineConfig(({ mode }) => {
         // lcov.info es el archivo que consume SonarCloud
         reporter: ['text', 'lcov'],
         reportsDirectory: 'coverage',
+        thresholds: {
+          statements: 95,
+          branches: 95,
+          functions: 95,
+          lines: 95,
+        },
         include: ['src/**/*.{ts,tsx}'],
         // El punto de entrada y los tipos de Vite no tienen logica que probar
         exclude: ['src/main.tsx', 'src/vite-env.d.ts'],

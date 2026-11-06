@@ -192,6 +192,25 @@ describe('actualizar', () => {
       codigo: 'NO_ENCONTRADO',
     });
   });
+
+  it('permite cambiar el rol a uno que Talento Humano puede asignar', async () => {
+    const { servicio, sesionesCerradas } = crearEscenario();
+    const creada = await servicio.crear(talento, entradaBase);
+
+    const usuario = await servicio.actualizar(talento, creada.id, { rol: 'JEFE_AREA' });
+
+    expect(usuario.rol).toBe('JEFE_AREA');
+    expect(sesionesCerradas).toContain(creada.id);
+  });
+
+  it('impide asignar un rol que Talento Humano no puede otorgar', async () => {
+    const { servicio } = crearEscenario();
+    const creada = await servicio.crear(talento, entradaBase);
+
+    await expect(
+      servicio.actualizar(talento, creada.id, { rol: 'TALENTO_HUMANO' }),
+    ).rejects.toMatchObject({ codigo: 'PROHIBIDO' });
+  });
 });
 
 describe('baja y reactivacion', () => {
@@ -247,5 +266,55 @@ describe('baja y reactivacion', () => {
     const { servicio } = crearEscenario();
     const creada = await servicio.crear(talento, entradaBase);
     await expect(servicio.reactivar(talento, creada.id)).rejects.toMatchObject({ codigo: 'CONFLICTO' });
+  });
+
+  it('usa hoyEnZona cuando no se proporciona la fecha del servicio', async () => {
+    const memoria = crearUsuariosEnMemoria();
+    const servicio = new UsuariosService({
+      repositorio: memoria.repositorio,
+      hashear: (clave) => Promise.resolve(`hash:${clave}`),
+    });
+
+    const creada = await servicio.crear(talento, entradaBase);
+    const usuario = await servicio.darDeBaja(talento, creada.id, undefined);
+
+    expect(usuario.fechaBaja).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('configurarDiasVacaciones', () => {
+  it('permite a SUPERADMIN configurar los días individuales de vacaciones', async () => {
+    const { servicio } = crearEscenario();
+    const creada = await servicio.crear(talento, entradaBase);
+
+    await expect(
+      servicio.configurarDiasVacaciones(superadmin, creada.id, 25),
+    ).resolves.toBe(25);
+  });
+
+  it('permite eliminar la excepción individual de vacaciones', async () => {
+    const { servicio } = crearEscenario();
+    const creada = await servicio.crear(talento, entradaBase);
+
+    await expect(
+      servicio.configurarDiasVacaciones(superadmin, creada.id, null),
+    ).resolves.toBeNull();
+  });
+
+  it('impide que Talento Humano configure días individuales', async () => {
+    const { servicio } = crearEscenario();
+    const creada = await servicio.crear(talento, entradaBase);
+
+    await expect(
+      servicio.configurarDiasVacaciones(talento, creada.id, 25),
+    ).rejects.toMatchObject({ codigo: 'PROHIBIDO' });
+  });
+
+  it('rechaza configurar vacaciones para una persona inexistente', async () => {
+    const { servicio } = crearEscenario();
+
+    await expect(
+      servicio.configurarDiasVacaciones(superadmin, 9999, 25),
+    ).rejects.toMatchObject({ codigo: 'NO_ENCONTRADO' });
   });
 });

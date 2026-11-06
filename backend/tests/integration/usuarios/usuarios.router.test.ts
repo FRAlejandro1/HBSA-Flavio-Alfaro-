@@ -195,6 +195,106 @@ describe('creacion y edicion', () => {
   });
 });
 
+describe('configuracion individual de vacaciones', () => {
+  const rutaVacaciones = (id: number) => `${BASE}/${id}/vacaciones`;
+
+  it('permite a SUPERADMIN establecer una excepcion individual', async () => {
+    const { app, idPropio } = await crearEscenario();
+
+    const respuesta = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      await tokenDe('SUPERADMIN'),
+    ).send({ diasVacaciones: 25.5 });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({ diasVacaciones: 25.5 });
+  });
+
+  it('permite a SUPERADMIN restablecer la herencia mediante null', async () => {
+    const { app, idPropio } = await crearEscenario();
+    const token = await tokenDe('SUPERADMIN');
+
+    await autorizar(request(app).patch(rutaVacaciones(idPropio)), token)
+      .send({ diasVacaciones: 25.5 });
+
+    const respuesta = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      token,
+    ).send({ diasVacaciones: null });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({ diasVacaciones: null });
+  });
+
+  it('impide que TALENTO_HUMANO configure los dias individuales', async () => {
+    const { app, idPropio } = await crearEscenario();
+
+    const respuesta = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      await tokenDe('TALENTO_HUMANO'),
+    ).send({ diasVacaciones: 25.5 });
+
+    expect(respuesta.status).toBe(403);
+  });
+
+  it('rechaza la configuracion de una persona de otro hospital', async () => {
+    const { app, idAjeno } = await crearEscenario();
+
+    const respuesta = await autorizar(
+      request(app).patch(rutaVacaciones(idAjeno)),
+      await tokenDe('SUPERADMIN'),
+    ).send({ diasVacaciones: 25.5 });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('rechaza valores fuera del rango permitido', async () => {
+    const { app, idPropio } = await crearEscenario();
+    const token = await tokenDe('SUPERADMIN');
+
+    const cero = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      token,
+    ).send({ diasVacaciones: 0 });
+
+    const excesivo = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      token,
+    ).send({ diasVacaciones: 367 });
+
+    const precision = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      token,
+    ).send({ diasVacaciones: 25.555 });
+
+    expect(cero.status).toBe(400);
+    expect(excesivo.status).toBe(400);
+    expect(precision.status).toBe(400);
+  });
+
+  it('rechaza campos adicionales en la configuracion', async () => {
+    const { app, idPropio } = await crearEscenario();
+
+    const respuesta = await autorizar(
+      request(app).patch(rutaVacaciones(idPropio)),
+      await tokenDe('SUPERADMIN'),
+    ).send({ diasVacaciones: 25, empresaId: 6 });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it('exige CSRF para modificar los dias individuales', async () => {
+    const { app, idPropio } = await crearEscenario();
+
+    const respuesta = await request(app)
+      .patch(rutaVacaciones(idPropio))
+      .set('Authorization', `Bearer ${await tokenDe('SUPERADMIN')}`)
+      .send({ diasVacaciones: 25.5 });
+
+    expect(respuesta.status).toBe(403);
+  });
+});
+
 describe('baja y reactivacion', () => {
   it('da de baja, rechaza la baja repetida y reactiva', async () => {
     const { app, idPropio } = await crearEscenario();

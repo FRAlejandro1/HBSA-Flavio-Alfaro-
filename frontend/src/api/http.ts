@@ -1,4 +1,4 @@
-﻿// Cliente HTTP compartido. Centraliza credenciales, CSRF y errores de la API.
+// Cliente HTTP compartido. Centraliza credenciales, CSRF y errores de la API.
 export class ErrorApi extends Error {
   constructor(
     mensaje: string,
@@ -79,9 +79,15 @@ interface OpcionesPeticion {
   headers?: Record<string, string>;
 }
 
-export async function peticionApi<T>(
+interface RespuestaRefresco {
+  accessToken: string;
+  expiraEn: number;
+}
+
+async function ejecutarPeticion<T>(
   ruta: string,
-  opciones: OpcionesPeticion = {},
+  opciones: OpcionesPeticion,
+  permitirRefresh: boolean,
 ): Promise<T> {
   const metodo = opciones.method ?? 'GET';
   const modificaEstado = !['GET', 'HEAD', 'OPTIONS'].includes(metodo.toUpperCase());
@@ -113,9 +119,55 @@ export async function peticionApi<T>(
   });
 
   if (!respuesta.ok) {
-    throw new ErrorApi(await leerMensajeError(respuesta), respuesta.status);
+    const error = new ErrorApi(
+      await leerMensajeError(respuesta),
+      respuesta.status,
+    );
+
+    const esRefresh = ruta === '/api/auth/refresh';
+
+    if (
+      respuesta.status === 401 &&
+      opciones.autenticada &&
+      permitirRefresh &&
+      !esRefresh
+    ) {
+      try {
+        const resultado = await ejecutarPeticion<RespuestaRefresco>(
+          '/api/auth/refresh',
+          {
+            method: 'POST',
+            body: {},
+          },
+          false,
+        );
+
+        if (
+          typeof resultado.accessToken !== 'string' ||
+          resultado.accessToken.length === 0
+        ) {
+          throw new ErrorApi('La API no devolvió un access token válido.', 401);
+        }
+
+        establecerTokenAcceso(resultado.accessToken);
+
+        return await ejecutarPeticion<T>(ruta, opciones, false);
+      } catch {
+        establecerTokenAcceso(null);
+        throw error;
+      }
+    }
+
+    throw error;
   }
 
   if (respuesta.status === 204) return undefined as T;
   return (await respuesta.json()) as T;
+}
+
+export async function peticionApi<T>(
+  ruta: string,
+  opciones: OpcionesPeticion = {},
+): Promise<T> {
+  return ejecutarPeticion<T>(ruta, opciones, true);
 }

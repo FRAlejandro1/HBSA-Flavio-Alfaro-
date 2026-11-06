@@ -13,7 +13,10 @@ import { crearRouterAuth } from './modules/auth/auth.modulo';
 import { crearRouterImportacion } from './modules/importacion/importacion.modulo';
 import { crearRouterOrganizacion } from './modules/organizacion/organizacion.modulo';
 import { crearRouterUsuarios } from './modules/usuarios/usuarios.modulo';
+import { crearRouterDelegaciones } from './modules/delegaciones/delegaciones.modulo';
 import { crearModuloVacaciones } from './modules/vacaciones/vacaciones.modulo';
+import { crearModuloJornadas } from './modules/jornadas/jornadas.modulo';
+import { crearModuloConfiguracionInstitucional } from './modules/configuracion-institucional/configuracion-institucional.modulo';
 import type { VacacionesService } from './modules/vacaciones/vacaciones.service';
 
 export interface AplicacionConServicios {
@@ -59,12 +62,17 @@ export function crearAppConServicios(): AplicacionConServicios {
 
   // Crear el módulo una sola vez permite compartir el servicio con el procesador automático.
   const moduloVacaciones = crearModuloVacaciones();
+  const moduloJornadas = crearModuloJornadas();
+  const moduloConfiguracionInstitucional = crearModuloConfiguracionInstitucional();
 
   // Módulos de dominio.
   app.use('/api/auth', crearRouterAuth());
   app.use('/api/organizacion', crearRouterOrganizacion());
   app.use('/api/usuarios', crearRouterUsuarios());
+  app.use('/api/delegaciones', crearRouterDelegaciones());
   app.use('/api/vacaciones', moduloVacaciones.router);
+  app.use('/api/jornadas', moduloJornadas.router);
+  app.use('/api/configuracion-institucional', moduloConfiguracionInstitucional.router);
   app.use('/api/importacion', crearRouterImportacion());
 
   // Siempre al final: respuesta 404 y manejo de errores.
@@ -80,3 +88,4 @@ export function crearAppConServicios(): AplicacionConServicios {
 export function crearApp(): Express {
   return crearAppConServicios().app;
 }
+

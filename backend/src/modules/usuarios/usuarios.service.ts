@@ -99,6 +99,27 @@ export class UsuariosService {
     return this.obtener(actor.empresaId, id);
   }
 
+  // Configura la excepción individual de vacaciones; solo SUPERADMIN puede modificarla.
+  async configurarDiasVacaciones(
+    actor: UsuarioAutenticado,
+    id: number,
+    diasVacaciones: number | null,
+  ): Promise<number | null> {
+    if (actor.rol !== 'SUPERADMIN') {
+      throw AppError.prohibido('Solo SUPERADMIN puede configurar los días de vacaciones');
+    }
+
+    // Comprueba que el empleado pertenece al hospital del actor.
+    await this.obtener(actor.empresaId, id);
+
+    return this.deps.repositorio.configurarDiasVacaciones(
+      actor.empresaId,
+      actor.id,
+      id,
+      diasVacaciones,
+    );
+  }
+
   async darDeBaja(
     actor: UsuarioAutenticado,
     id: number,

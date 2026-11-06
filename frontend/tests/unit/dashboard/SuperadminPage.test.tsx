@@ -1,14 +1,21 @@
-﻿import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UsuarioAutenticado } from '@/features/auth/auth.types';
-import { SuperadminPage } from '@/features/dashboard/SuperadminPage';
+import { SuperadminPage } from '@/features/superadmin/SuperadminPage';
 
 const mocks = vi.hoisted(() => ({
   cerrarSesion: vi.fn(),
+  listarSolicitudes: vi.fn(),
+  obtenerSolicitud: vi.fn(),
 }));
 
 vi.mock('@/features/auth/auth.api', () => ({
   cerrarSesion: mocks.cerrarSesion,
+}));
+
+vi.mock('@/features/dashboard/api/dashboard.api', () => ({
+  listarSolicitudes: mocks.listarSolicitudes,
+  obtenerSolicitud: mocks.obtenerSolicitud,
 }));
 
 const usuario: UsuarioAutenticado = {
@@ -42,7 +49,15 @@ function renderSuperadmin() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+
   mocks.cerrarSesion.mockResolvedValue(undefined);
+  mocks.listarSolicitudes.mockResolvedValue({
+    solicitudes: [],
+    total: 0,
+  });
+  mocks.obtenerSolicitud.mockResolvedValue({
+    solicitud: null,
+  });
 });
 
 afterEach(() => {
@@ -54,11 +69,10 @@ describe('SuperadminPage', () => {
     renderSuperadmin();
 
     expect(
-      screen.getByRole('heading', { name: 'Panel de administración' }),
+      screen.getByRole('heading', { name: 'Hola, Ana' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Ana Pérez')).toBeInTheDocument();
-    expect(screen.getByText('SUPERADMIN')).toBeInTheDocument();
-    expect(screen.getByText('Hospital de prueba')).toBeInTheDocument();
+    expect(screen.getByText(/Superadministradora.*Administración/)).toBeInTheDocument();
   });
 
   it('permite cambiar el tema', () => {
@@ -74,7 +88,7 @@ describe('SuperadminPage', () => {
   it('cierra la sesión y notifica al componente superior', async () => {
     const { onLogout } = renderSuperadmin();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salir' }));
 
     await waitFor(() => {
       expect(mocks.cerrarSesion).toHaveBeenCalledOnce();
@@ -89,7 +103,7 @@ describe('SuperadminPage', () => {
 
     const { onLogout, anunciar } = renderSuperadmin();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salir' }));
 
     await waitFor(() => {
       expect(onLogout).toHaveBeenCalledOnce();

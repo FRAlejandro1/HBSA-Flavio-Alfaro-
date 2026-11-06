@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   esquemaActualizarUsuario,
   esquemaBaja,
+  esquemaConfigurarDiasVacaciones,
   esquemaCrearUsuario,
   esquemaFiltrosUsuarios,
 } from '../../../../src/modules/usuarios/usuarios.validators';
@@ -84,5 +85,49 @@ describe('esquemaBaja', () => {
   it('valida la fecha de baja', () => {
     expect(esquemaBaja.parse({ fechaBaja: '2026-10-01' })).toEqual({ fechaBaja: '2026-10-01' });
     expect(() => esquemaBaja.parse({ fechaBaja: 'ayer' })).toThrow();
+  });
+});
+
+describe('esquemaConfigurarDiasVacaciones', () => {
+  it('acepta dias enteros y decimales con dos posiciones', () => {
+    expect(esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 30 })).toEqual({
+      diasVacaciones: 30,
+    });
+    expect(esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 25.5 })).toEqual({
+      diasVacaciones: 25.5,
+    });
+    expect(esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 25.55 })).toEqual({
+      diasVacaciones: 25.55,
+    });
+  });
+
+  it('acepta null para restablecer la herencia', () => {
+    expect(esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: null })).toEqual({
+      diasVacaciones: null,
+    });
+  });
+
+  it('rechaza cero, negativos y valores superiores a 366', () => {
+    expect(() => esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 0 })).toThrow();
+    expect(() => esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: -1 })).toThrow();
+    expect(() => esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 366.01 })).toThrow();
+  });
+
+  it('rechaza mas de dos decimales', () => {
+    expect(() => esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 25.555 })).toThrow();
+  });
+
+  it('rechaza campos adicionales y valores que no sean numericos', () => {
+    expect(() =>
+      esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: 25, empresaId: 6 }),
+    ).toThrow();
+
+    expect(() =>
+      esquemaConfigurarDiasVacaciones.parse({ diasVacaciones: '25' }),
+    ).toThrow();
+  });
+
+  it('exige el campo diasVacaciones', () => {
+    expect(() => esquemaConfigurarDiasVacaciones.parse({})).toThrow();
   });
 });

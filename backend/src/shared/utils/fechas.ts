@@ -4,14 +4,14 @@
 const MS_POR_DIA = 86_400_000;
 const FORMATO_FECHA = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-// Tope de busqueda para no quedar en un ciclo si los datos son absurdos
+// Tope de busqueda para no quedar en un ciclo si los datos son absurdos.
 const LIMITE_BUSQUEDA_DIAS = 4000;
 
-// Dias minimos de anticipacion para que una solicitud sea programada
-// (la misma regla la deriva la BD en solicitudes_vacaciones.tipo)
+// Umbral historico predeterminado. Las solicitudes nuevas deben utilizar
+// el umbral institucional guardado al momento de su creacion.
 export const DIAS_ANTICIPACION_PROGRAMADA = 7;
 
-// Convierte "AAAA-MM-DD" en Date (UTC); rechaza formatos y fechas inexistentes como 2026-02-31
+// Convierte "AAAA-MM-DD" en Date (UTC); rechaza formatos y fechas inexistentes.
 export function parsearFecha(fecha: string): Date {
   const partes = FORMATO_FECHA.exec(fecha);
   if (!partes) {
@@ -24,33 +24,33 @@ export function parsearFecha(fecha: string): Date {
   return resultado;
 }
 
-// Convierte un Date (UTC) en "AAAA-MM-DD"
+// Convierte un Date (UTC) en "AAAA-MM-DD".
 export function formatearFecha(fecha: Date): string {
   return fecha.toISOString().slice(0, 10);
 }
 
-// Suma (o resta, con negativos) dias calendario a una fecha
+// Suma (o resta, con negativos) dias calendario a una fecha.
 export function sumarDias(fecha: string, dias: number): string {
   return formatearFecha(new Date(parsearFecha(fecha).getTime() + dias * MS_POR_DIA));
 }
 
-// Dias calendario entre dos fechas (negativo si "hasta" es anterior)
+// Dias calendario entre dos fechas (negativo si "hasta" es anterior).
 export function diferenciaEnDias(desde: string, hasta: string): number {
   return Math.round((parsearFecha(hasta).getTime() - parsearFecha(desde).getTime()) / MS_POR_DIA);
 }
 
-// Sabado o domingo
+// Sabado o domingo.
 export function esFinDeSemana(fecha: string): boolean {
   const dia = parsearFecha(fecha).getUTCDay();
   return dia === 0 || dia === 6;
 }
 
-// Laborable: ni fin de semana ni feriado
+// Laborable: ni fin de semana ni feriado.
 export function esDiaLaborable(fecha: string, feriados: ReadonlySet<string>): boolean {
   return !esFinDeSemana(fecha) && !feriados.has(fecha);
 }
 
-// Cuenta los dias laborables entre dos fechas, ambas incluidas
+// Cuenta los dias laborables entre dos fechas, ambas incluidas.
 export function calcularDiasLaborables(
   inicio: string,
   fin: string,
@@ -93,12 +93,21 @@ export function calcularFechaFin(
   throw new RangeError('No se encontro la fecha final dentro del limite de busqueda');
 }
 
-// Dias calendario entre la solicitud y el inicio de las vacaciones
+// Dias calendario entre la solicitud y el inicio de las vacaciones.
 export function diasDeAnticipacion(fechaSolicitud: string, fechaInicio: string): number {
   return diferenciaEnDias(fechaSolicitud, fechaInicio);
 }
 
-// Programada si se pidio con al menos 7 dias de anticipacion
-export function esProgramada(fechaSolicitud: string, fechaInicio: string): boolean {
-  return diasDeAnticipacion(fechaSolicitud, fechaInicio) >= DIAS_ANTICIPACION_PROGRAMADA;
+// Clasifica una solicitud como programada usando el umbral institucional aplicado.
+// El valor predeterminado conserva la compatibilidad con el criterio historico de siete dias.
+export function esProgramada(
+  fechaSolicitud: string,
+  fechaInicio: string,
+  diasMinimos: number = DIAS_ANTICIPACION_PROGRAMADA,
+): boolean {
+  if (!Number.isInteger(diasMinimos) || diasMinimos < 0) {
+    throw new RangeError('Los dias minimos de anticipacion deben ser un entero no negativo');
+  }
+
+  return diasDeAnticipacion(fechaSolicitud, fechaInicio) >= diasMinimos;
 }

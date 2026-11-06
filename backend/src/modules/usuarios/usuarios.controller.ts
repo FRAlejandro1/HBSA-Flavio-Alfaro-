@@ -1,4 +1,4 @@
-// Traduce HTTP a llamadas del service. El hospital sale siempre del token (obtenerEmpresaId),
+﻿// Traduce HTTP a llamadas del service. El hospital sale siempre del token (obtenerEmpresaId),
 // nunca del cuerpo, la query o la URL. Sin reglas de negocio.
 import type { RequestHandler } from 'express';
 import { obtenerEmpresaId } from '../../middlewares/multitenant';
@@ -7,6 +7,7 @@ import type { UsuariosService } from './usuarios.service';
 import type {
   ActualizarUsuarioEntrada,
   BajaEntrada,
+  ConfigurarDiasVacacionesEntrada,
   CrearUsuarioEntrada,
   FiltrosUsuariosEntrada,
 } from './usuarios.validators';
@@ -16,6 +17,7 @@ export interface UsuariosController {
   obtener: RequestHandler;
   crear: RequestHandler;
   actualizar: RequestHandler;
+  configurarDiasVacaciones: RequestHandler;
   darDeBaja: RequestHandler;
   reactivar: RequestHandler;
 }
@@ -43,6 +45,16 @@ export function crearUsuariosController(servicio: UsuariosService): UsuariosCont
         req.body as ActualizarUsuarioEntrada,
       );
       res.json({ usuario });
+    },
+
+    configurarDiasVacaciones: async (req, res) => {
+      const entrada = req.body as ConfigurarDiasVacacionesEntrada;
+      const diasVacaciones = await servicio.configurarDiasVacaciones(
+        exigirUsuario(req),
+        leerIdParametro(req),
+        entrada.diasVacaciones,
+      );
+      res.json({ diasVacaciones });
     },
 
     darDeBaja: async (req, res) => {

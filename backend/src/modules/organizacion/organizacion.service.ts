@@ -1,5 +1,5 @@
 // Reglas de negocio de areas y cargos: existencia dentro del hospital, proceso y arbol de areas, respuestas completas.
-// Las restricciones de la base (nombres unicos, registros en uso) las traduce el repository.
+// La configuracion de vacaciones por area es independiente de los cambios organizativos.
 import { AppError } from '../../shared/errors/AppError';
 import type {
   Area,
@@ -49,6 +49,32 @@ export class OrganizacionService {
       await this.exigirPadreValido(empresaId, actual, cambios.parentId);
     }
     await this.repositorio.actualizarArea(empresaId, id, cambios);
+    return this.obtenerArea(empresaId, id);
+  }
+
+  // Configura la excepcion de vacaciones del area; null restablece la herencia institucional
+  async configurarDiasVacacionesArea(
+    empresaId: number,
+    actorId: number,
+    id: number,
+    diasVacaciones: number | null,
+  ): Promise<Area> {
+    await this.obtenerArea(empresaId, id);
+
+    try {
+      await this.repositorio.configurarDiasVacacionesArea(
+        empresaId,
+        actorId,
+        id,
+        diasVacaciones,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'AREA_NO_ENCONTRADA') {
+        throw AppError.noEncontrado('El area no existe');
+      }
+      throw error;
+    }
+
     return this.obtenerArea(empresaId, id);
   }
 

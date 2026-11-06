@@ -60,7 +60,7 @@ export function LoginPage({ onLogin, tema, cambiarTema }: Props) {
 
       <section className="login-card" aria-labelledby="titulo-login">
         <div className="brand-mark" aria-hidden="true">HB</div>
-        <h1 className="login-brand-title">Sistema de Permisos y Vacaciones</h1>
+        <h1 className="login-brand-title">Sistema de Gestión de Personal</h1>
         <p className="login-subtitle">Hospital Básico San Andrés · Flavio Alfaro</p>
 
         <div className="login-divider" />

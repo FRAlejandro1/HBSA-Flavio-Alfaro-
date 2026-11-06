@@ -33,6 +33,17 @@ export const esquemaActualizarArea = z
   .strict()
   .refine((cambios) => Object.keys(cambios).length > 0, 'Indica al menos un campo para actualizar');
 
+// Configuracion de dias de vacaciones del area; null restablece la herencia institucional.
+export const esquemaConfigurarDiasVacacionesArea = z
+  .object({
+    diasVacaciones: z.number().positive().max(366).multipleOf(0.01).nullable(),
+  })
+  .strict();
+
+export type ConfigurarDiasVacacionesAreaEntrada = z.infer<
+  typeof esquemaConfigurarDiasVacacionesArea
+>;
+
 export const esquemaCrearCargo = z
   .object({
     detalle,

@@ -61,6 +61,17 @@ export const esquemaFiltrosUsuarios = z
 // Sin cuerpo, la baja es "hoy"
 export const esquemaBaja = z.object({ fechaBaja: fechaIso.optional() }).strict().default({});
 
+// Configuración individual de vacaciones; null restablece la herencia del área.
+export const esquemaConfigurarDiasVacaciones = z
+  .object({
+    diasVacaciones: z.number().positive().max(366).multipleOf(0.01).nullable(),
+  })
+  .strict();
+
+export type ConfigurarDiasVacacionesEntrada = z.infer<
+  typeof esquemaConfigurarDiasVacaciones
+>;
+
 export type CrearUsuarioEntrada = z.infer<typeof esquemaCrearUsuario>;
 export type ActualizarUsuarioEntrada = z.infer<typeof esquemaActualizarUsuario>;
 export type FiltrosUsuariosEntrada = z.infer<typeof esquemaFiltrosUsuarios>;
