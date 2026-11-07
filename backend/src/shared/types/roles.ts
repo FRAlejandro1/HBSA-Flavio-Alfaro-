@@ -1,6 +1,6 @@
 // Roles del sistema. Los codigos coinciden con roles.codigo en la base de datos.
 
-export const ROLES = ['SUPERADMIN', 'TALENTO_HUMANO', 'JEFE_AREA', 'EMPLEADO'] as const;
+export const ROLES = ['SUPERADMIN', 'DIRECTOR', 'TALENTO_HUMANO', 'JEFE_AREA', 'EMPLEADO'] as const;
 
 export type CodigoRol = (typeof ROLES)[number];
 

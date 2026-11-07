@@ -1,4 +1,4 @@
-﻿import type { UsuarioAutenticado } from '@/features/auth/auth.types';
+import type { UsuarioAutenticado } from '@/features/auth/auth.types';
 
 export type EstadoSolicitud =
   | 'PENDIENTE'
@@ -12,7 +12,7 @@ export type TipoSolicitud = 'PROGRAMADA' | 'NO_PROGRAMADA';
 export type TipoAprobador =
   | 'JEFE_INMEDIATO'
   | 'JEFE_AREA'
-  | 'AUTORIDAD_MAXIMA'
+  | 'DIRECTOR'
   | 'SUPERADMIN';
 
 export type EstadoPaso =

@@ -28,7 +28,7 @@ INSERT INTO usuarios (empresa_id, area_id, cargo_id, rol_id, jefe_inmediato_id, 
 VALUES (@e,
   (SELECT id FROM areas  WHERE empresa_id = @e AND detalle = 'Direccionamiento y Conducción Estratégica del Hospital'),
   (SELECT id FROM cargos WHERE empresa_id = @e AND detalle = 'Director/a de Hospital Básico'),
-  (SELECT id FROM roles WHERE codigo = 'JEFE_AREA'), NULL,
+  (SELECT id FROM roles WHERE codigo = 'DIRECTOR'), NULL,
   '0900000002', 'Diego', 'Director', 'diego.director@hospital.test', '0990000002', '2018-03-01');
 SET @director = LAST_INSERT_ID();
 

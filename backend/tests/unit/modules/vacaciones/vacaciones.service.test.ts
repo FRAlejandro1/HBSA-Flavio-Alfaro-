@@ -1,4 +1,3 @@
-
 // Pruebas del service de vacaciones con el repositorio en memoria y un reloj fijo.
 import { describe, expect, it, vi } from 'vitest';
 import type { PersonaDePrueba } from '../../../helpers/vacaciones';
@@ -32,7 +31,7 @@ function actor(id: number, rol: UsuarioAutenticado['rol'] = 'EMPLEADO', empresaI
   return { id, empresaId, rol, jti: `jti-${String(id)}`, expira: 9_999_999_999 };
 }
 
-// Escenario: Luis (1) depende de Laura (2), Silvia (3) es subdirectora y Diego (4) es Rector.
+// Escenario: Luis (1) depende de Laura (2), Silvia (3) es subdirectora y Diego (4) es Director.
 function crearEscenario(
   plazoHoras = 48,
   ahora: (() => Date) | null = () => AHORA,
@@ -57,10 +56,10 @@ function crearEscenario(
   memoria.rutas.set(5, ['JEFE_INMEDIATO']);
   memoria.rutas.set(4, ['JEFE_INMEDIATO']);
   memoria.rutas.set(3, ['JEFE_INMEDIATO']);
-  memoria.rutas.set(2, ['AUTORIDAD_MAXIMA']);
+  memoria.rutas.set(2, ['DIRECTOR']);
   memoria.rutas.set(1, ['SUPERADMIN']);
 
-  memoria.aprobadores.autoridadMaxima = 4;
+  memoria.aprobadores.director = 4;
   memoria.aprobadores.superadmin = 7;
   personas.set(7, persona(7, { nivelJerarquico: 4 }));
 
@@ -266,20 +265,20 @@ describe('crear', () => {
     expect(ajena.ordenTramite).toBe('VAC-2026-000001');
   });
 
-  it('asigna directamente al Rector si la persona no tiene jefe inmediato', async () => {
+  it('asigna directamente al Director si la persona no tiene jefe inmediato', async () => {
     const { servicio } = crearEscenario();
     const solicitud = await servicio.crear(actor(8), programada);
 
     expect(solicitud.pasos).toHaveLength(1);
     expect(solicitud.pasos[0]).toMatchObject({
       orden: 1,
-      tipoAprobador: 'AUTORIDAD_MAXIMA',
+      tipoAprobador: 'DIRECTOR',
       estado: 'PENDIENTE',
       aprobador: { id: 4 },
     });
   });
 
-  it('asigna directamente al Rector si el jefe inmediato esta inactivo', async () => {
+  it('asigna directamente al Director si el jefe inmediato esta inactivo', async () => {
     const { servicio, personas } = crearEscenario();
     const jefa = personas.get(2);
 
@@ -290,7 +289,7 @@ describe('crear', () => {
     expect(solicitud.pasos).toHaveLength(1);
     expect(solicitud.pasos[0]).toMatchObject({
       orden: 1,
-      tipoAprobador: 'AUTORIDAD_MAXIMA',
+      tipoAprobador: 'DIRECTOR',
       estado: 'PENDIENTE',
       aprobador: { id: 4 },
     });
@@ -307,9 +306,9 @@ describe('crear', () => {
     });
   });
 
-  it('rechaza la asignacion directa si no existe exactamente un Rector activo', async () => {
+  it('rechaza la asignacion directa si no existe un Director activo', async () => {
     const { servicio, aprobadores } = crearEscenario();
-    aprobadores.autoridadMaxima = null;
+    aprobadores.director = null;
 
     await expect(servicio.crear(actor(8), programada)).rejects.toMatchObject({
       codigo: 'REGLA_DE_NEGOCIO',
@@ -328,19 +327,19 @@ describe('crear', () => {
     });
   });
 
-  it('el subdirector solicita al Rector', async () => {
+  it('el subdirector solicita al Director', async () => {
     const { servicio } = crearEscenario();
     const solicitud = await servicio.crear(actor(3, 'JEFE_AREA'), programada);
 
     expect(solicitud.pasos[0]).toMatchObject({
-      tipoAprobador: 'AUTORIDAD_MAXIMA',
+      tipoAprobador: 'DIRECTOR',
     });
     expect(solicitud.pasos[0]?.aprobador.id).toBe(4);
   });
 
-  it('la solicitud del Rector sigue la ruta especial del SUPERADMIN', async () => {
+  it('la solicitud del Director sigue la ruta especial del SUPERADMIN', async () => {
     const { servicio } = crearEscenario();
-    const solicitud = await servicio.crear(actor(4, 'JEFE_AREA'), programada);
+    const solicitud = await servicio.crear(actor(4, 'DIRECTOR'), programada);
 
     expect(solicitud.pasos[0]).toMatchObject({
       tipoAprobador: 'SUPERADMIN',
@@ -474,7 +473,7 @@ describe('listarPropias', () => {
 });
 
 describe('procesarEscalamientosVencidos', () => {
-  it('escala del jefe inmediato al Rector y no duplica el escalamiento', async () => {
+  it('escala del jefe inmediato al Director y no duplica el escalamiento', async () => {
     let ahora = AHORA;
     const { servicio, solicitudes } = crearEscenario(1, () => ahora);
     const solicitud = await servicio.crear(actor(1), programada);
@@ -492,7 +491,7 @@ describe('procesarEscalamientosVencidos', () => {
     });
     expect(pasos?.[1]).toMatchObject({
       orden: 2,
-      tipoAprobador: 'AUTORIDAD_MAXIMA',
+      tipoAprobador: 'DIRECTOR',
       origen: 'ESCALAMIENTO_PLAZO',
       estado: 'PENDIENTE',
       aprobador: { id: 4 },
@@ -505,7 +504,7 @@ describe('procesarEscalamientosVencidos', () => {
     expect(solicitudes[0]?.detalle.pasos).toHaveLength(2);
   });
 
-  it('escala del Rector al SUPERADMIN cuando vence su propio plazo', async () => {
+  it('escala del Director al SUPERADMIN cuando vence su propio plazo', async () => {
     let ahora = AHORA;
     const { servicio, solicitudes } = crearEscenario(1, () => ahora);
 
@@ -522,7 +521,7 @@ describe('procesarEscalamientosVencidos', () => {
     expect(pasos).toHaveLength(3);
     expect(pasos?.[0]?.estado).toBe('ESCALADO');
     expect(pasos?.[1]).toMatchObject({
-      tipoAprobador: 'AUTORIDAD_MAXIMA',
+      tipoAprobador: 'DIRECTOR',
       estado: 'ESCALADO',
     });
     expect(pasos?.[2]).toMatchObject({
@@ -534,10 +533,10 @@ describe('procesarEscalamientosVencidos', () => {
     });
   });
 
-  it('mantiene pendiente el paso vencido si no existe un Rector activo para escalar', async () => {
+  it('mantiene pendiente el paso vencido si no existe un Director activo para escalar', async () => {
     let ahora = AHORA;
     const { servicio, solicitudes, aprobadores } = crearEscenario(1, () => ahora);
-    aprobadores.autoridadMaxima = null;
+    aprobadores.director = null;
 
     await servicio.crear(actor(1), programada);
 
@@ -554,7 +553,7 @@ describe('procesarEscalamientosVencidos', () => {
     });
   });
 
-  it('autoriza la solicitud cuando el Rector acepta un paso escalado por vencimiento', async () => {
+  it('autoriza la solicitud cuando el Director acepta un paso escalado por vencimiento', async () => {
     let ahora = AHORA;
     const { servicio, solicitudes, notificaciones } = crearEscenario(1, () => ahora);
     const solicitud = await servicio.crear(actor(1), programada);
@@ -562,12 +561,12 @@ describe('procesarEscalamientosVencidos', () => {
     ahora = new Date(AHORA.getTime() + 60 * 60 * 1000);
     await servicio.procesarEscalamientosVencidos();
 
-    const detalle = await servicio.aprobar(actor(4), solicitud.id, {});
+    const detalle = await servicio.aprobar(actor(4, 'DIRECTOR'), solicitud.id, {});
 
     expect(detalle.estado).toBe('AUTORIZADA');
     expect(solicitudes[0]?.detalle.pasos[0]?.estado).toBe('ESCALADO');
     expect(solicitudes[0]?.detalle.pasos[1]).toMatchObject({
-      tipoAprobador: 'AUTORIDAD_MAXIMA',
+      tipoAprobador: 'DIRECTOR',
       origen: 'ESCALAMIENTO_PLAZO',
       estado: 'APROBADO',
       decididoPor: { id: 4 },
@@ -811,7 +810,6 @@ describe('negar', () => {
     expect(notificacion?.mensaje).toBe(
       `Tu solicitud de Vacaciones fue negada por tu jefe. Motivo: ${motivo.slice(0, 200)}`,
     );
-
   });
 });
 

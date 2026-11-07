@@ -74,6 +74,7 @@ export interface CambiosUsuario {
 export const ROLES_ASIGNABLES: Record<CodigoRol, readonly CodigoRol[]> = {
   SUPERADMIN: ROLES,
   TALENTO_HUMANO: ['JEFE_AREA', 'EMPLEADO'],
+  DIRECTOR: [],
   JEFE_AREA: [],
   EMPLEADO: [],
 };

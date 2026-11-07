@@ -475,7 +475,7 @@ export class VacacionesRepository implements IVacacionesRepository {
     solicitante: Solicitante,
   ): Promise<number | null> {
     // Cada tipo se resuelve con su consulta fija y exige que la persona este activa.
-    let filas: { id: number }[];
+    let filas: { id: number }[] = [];
 
     switch (tipo) {
       case 'JEFE_INMEDIATO':
@@ -506,18 +506,17 @@ export class VacacionesRepository implements IVacacionesRepository {
         );
         break;
 
-      case 'AUTORIDAD_MAXIMA':
-        // El Rector se identifica por nivel jerarquico 1, no por su rol.
+      case 'DIRECTOR':
+        // El Director se identifica por su rol institucional, no por el cargo.
         // Se recuperan todos para comprobar que exista exactamente uno activo.
         filas = await this.bd.consultar<{ id: number }>(
           `SELECT u.id AS id
            FROM usuarios u
-           INNER JOIN cargos c
-             ON c.empresa_id = u.empresa_id
-             AND c.id = u.cargo_id
+           INNER JOIN roles r ON r.id = u.rol_id
            WHERE u.empresa_id = ?
-             AND c.nivel_jerarquico = 1
-             AND u.estado = 'ACTIVO'`,
+             AND r.codigo = 'DIRECTOR'
+             AND u.estado = 'ACTIVO'
+           ORDER BY u.id`,
           [empresaId],
         );
         break;
@@ -537,9 +536,9 @@ export class VacacionesRepository implements IVacacionesRepository {
         break;
     }
 
-    if (tipo === 'AUTORIDAD_MAXIMA') {
-      const rector = filas[0];
-      return filas.length === 1 && rector !== undefined ? rector.id : null;
+    if (tipo === 'DIRECTOR') {
+      const director = filas[0];
+      return filas.length === 1 && director !== undefined ? director.id : null;
     }
 
     return filas[0]?.id ?? null;

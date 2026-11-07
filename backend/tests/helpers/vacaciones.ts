@@ -1,4 +1,3 @@
-
 /**
  * Repositorio de vacaciones en memoria para pruebas automatizadas.
  *
@@ -158,7 +157,7 @@ export interface VacacionesEnMemoria {
    */
   aprobadores: {
     jefeArea: Map<number, number>;
-    autoridadMaxima: number | null;
+    director: number | null;
     superadmin: number | null;
   };
 
@@ -198,7 +197,7 @@ export function crearVacacionesEnMemoria(): VacacionesEnMemoria {
   /** Configuración de los responsables de aprobación. */
   const aprobadores = {
     jefeArea: new Map<number, number>(),
-    autoridadMaxima: null as number | null,
+    director: null as number | null,
     superadmin: null as number | null,
   };
 
@@ -380,7 +379,7 @@ export function crearVacacionesEnMemoria(): VacacionesEnMemoria {
      * Resuelve al aprobador correspondiente al tipo requerido.
      *
      * El jefe inmediato se obtiene del solicitante; el jefe de área,
-     * la autoridad máxima y el superadministrador se obtienen de la
+     * el director y el superadministrador se obtienen de la
      * configuración del escenario.
      *
      * Solo devuelve el ID si el aprobador existe, pertenece a la misma
@@ -393,8 +392,8 @@ export function crearVacacionesEnMemoria(): VacacionesEnMemoria {
         id = solicitante.jefeInmediatoId;
       } else if (tipo === 'JEFE_AREA') {
         id = aprobadores.jefeArea.get(solicitante.areaId) ?? null;
-      } else if (tipo === 'AUTORIDAD_MAXIMA') {
-        id = aprobadores.autoridadMaxima;
+      } else if (tipo === 'DIRECTOR') {
+        id = aprobadores.director;
       } else {
         id = aprobadores.superadmin;
       }

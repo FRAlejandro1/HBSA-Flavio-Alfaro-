@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => {
   };
 
   const pool = {
+    pool: {
+      on: vi.fn(),
+    },
     execute: vi.fn(),
     getConnection: vi.fn(),
     end: vi.fn(),
@@ -23,6 +26,7 @@ const mocks = vi.hoisted(() => {
     createPool: vi.fn(() => pool),
     logger: {
       info: vi.fn(),
+      error: vi.fn(),
     },
     env: {
       DB_HOST: 'localhost',
@@ -87,6 +91,73 @@ describe('acceso a base de datos', () => {
     });
   });
 
+  it('configura UTC cuando se crea una conexion fisica', async () => {
+    const query = vi.fn().mockResolvedValue([[], []]);
+    const promesa = vi.fn(() => ({ query }));
+
+    const { obtenerBaseDatos } = await import('../../../src/config/database');
+
+    obtenerBaseDatos();
+
+    expect(mocks.pool.pool.on).toHaveBeenCalledWith(
+      'connection',
+      expect.any(Function),
+    );
+
+    const inicializar = mocks.pool.pool.on.mock.calls[0]?.[1] as (
+      conexion: { promise: typeof promesa },
+    ) => void;
+
+    inicializar({ promise: promesa });
+
+    expect(promesa).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith("SET time_zone = '+00:00'");
+  });
+
+  it('registra el error cuando no puede configurar UTC en una conexion', async () => {
+    const error = new Error('fallo al establecer UTC');
+    const query = vi.fn().mockRejectedValue(error);
+    const promesa = vi.fn(() => ({ query }));
+
+    const { obtenerBaseDatos } = await import('../../../src/config/database');
+
+    obtenerBaseDatos();
+
+    const inicializar = mocks.pool.pool.on.mock.calls[0]?.[1] as (
+      conexion: { promise: typeof promesa },
+    ) => void;
+
+    inicializar({ promise: promesa });
+
+    await vi.waitFor(() =>
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        'No se pudo establecer UTC en una conexion MySQL',
+        { error },
+      ),
+    );
+  });
+
+  it('registra errores no convencionales al configurar UTC', async () => {
+    const query = vi.fn().mockRejectedValue('error de conexion');
+    const promesa = vi.fn(() => ({ query }));
+
+    const { obtenerBaseDatos } = await import('../../../src/config/database');
+
+    obtenerBaseDatos();
+
+    const inicializar = mocks.pool.pool.on.mock.calls[0]?.[1] as (
+      conexion: { promise: typeof promesa },
+    ) => void;
+
+    inicializar({ promise: promesa });
+
+    await vi.waitFor(() =>
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        'No se pudo establecer UTC en una conexion MySQL',
+        { error: new Error('error de conexion') },
+      ),
+    );
+  });
   it('reutiliza la misma instancia de base de datos', async () => {
     const { obtenerBaseDatos } = await import('../../../src/config/database');
 
@@ -294,6 +365,22 @@ describe('acceso a base de datos', () => {
     expect(mocks.createPool).toHaveBeenCalledOnce();
   });
 
+  it('libera la conexion cuando falla el trabajo y el rollback', async () => {
+    mocks.conexion.rollback.mockRejectedValue(
+      new Error('no se pudo revertir'),
+    );
+
+    const { obtenerBaseDatos } = await import('../../../src/config/database');
+
+    await expect(
+      obtenerBaseDatos().transaccion(() => {
+        throw new Error('fallo del trabajo');
+      }),
+    ).rejects.toThrow('no se pudo revertir');
+
+    expect(mocks.conexion.rollback).toHaveBeenCalledOnce();
+    expect(mocks.conexion.release).toHaveBeenCalledOnce();
+  });
   it('propaga el error de rollback cuando falla la reversión', async () => {
     mocks.conexion.rollback.mockRejectedValue(
       new Error('fallo al revertir'),

@@ -103,6 +103,17 @@ function crearBaseDatos(): IBaseDatos {
     // Las fechas de calendario (DATE) no tienen hora: se dejan como texto AAAA-MM-DD, sin conversiones de zona
     dateStrings: ['DATE'],
   });
+  // Cada conexion fisica debe trabajar con la zona horaria UTC del servidor.
+  pool.pool.on('connection', (conexion) => {
+    void conexion
+      .promise()
+      .query("SET time_zone = '+00:00'")
+      .catch((error: unknown) => {
+        logger.error('No se pudo establecer UTC en una conexion MySQL', {
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
+  });
   logger.info('Pool de MySQL creado', { host: env.DB_HOST, base: env.DB_NAME });
   return new BaseDatosMySql(pool);
 }

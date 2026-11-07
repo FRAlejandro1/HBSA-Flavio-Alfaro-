@@ -11,7 +11,7 @@ export const ESTADOS_EN_TRAMITE: readonly EstadoSolicitud[] = ['PENDIENTE', 'VIS
 export type TipoSolicitud = 'PROGRAMADA' | 'NO_PROGRAMADA';
 
 // Quien debe aprobar un paso de la ruta.
-export type TipoAprobador = 'JEFE_INMEDIATO' | 'JEFE_AREA' | 'AUTORIDAD_MAXIMA' | 'SUPERADMIN';
+export type TipoAprobador = 'JEFE_INMEDIATO' | 'JEFE_AREA' | 'DIRECTOR' | 'SUPERADMIN';
 
 export type EstadoPaso = 'PENDIENTE' | 'APROBADO' | 'NEGADO' | 'ESCALADO' | 'CANCELADO';
 

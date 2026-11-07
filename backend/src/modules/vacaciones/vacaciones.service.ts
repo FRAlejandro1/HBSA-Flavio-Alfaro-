@@ -51,7 +51,7 @@ export interface DependenciasVacacionesService {
 const MENSAJE_SIN_APROBADOR: Record<TipoAprobador, string> = {
   JEFE_INMEDIATO: 'No tienes un jefe inmediato activo asignado: pide a Talento Humano que lo registre',
   JEFE_AREA: 'Tu area no tiene un jefe activo asignado: pide a Talento Humano que lo registre',
-  AUTORIDAD_MAXIMA: 'El hospital no tiene exactamente un Rector activo registrado',
+  DIRECTOR: 'El hospital no tiene exactamente un DIRECTOR activo registrado',
   SUPERADMIN: 'El hospital no tiene un SUPERADMIN activo registrado',
 };
 
@@ -59,7 +59,7 @@ const MENSAJE_SIN_APROBADOR: Record<TipoAprobador, string> = {
 const POR_QUIEN: Record<TipoAprobador, string> = {
   JEFE_INMEDIATO: ' por tu jefe',
   JEFE_AREA: ' por tu jefe',
-  AUTORIDAD_MAXIMA: ' por el Rector',
+  DIRECTOR: ' por el Director',
   SUPERADMIN: '',
 };
 
@@ -245,9 +245,9 @@ export class VacacionesService {
           continue;
         }
 
-        // El vencimiento de un jefe o delegado escala al Rector; el del Rector, al SUPERADMIN.
+        // El vencimiento de un jefe o delegado escala al DIRECTOR; el del DIRECTOR, al SUPERADMIN.
         const nuevoTipoAprobador: TipoAprobador =
-          paso.tipoAprobador === 'AUTORIDAD_MAXIMA' ? 'SUPERADMIN' : 'AUTORIDAD_MAXIMA';
+          paso.tipoAprobador === 'DIRECTOR' ? 'SUPERADMIN' : 'DIRECTOR';
 
         const nuevoAprobadorId = await repositorio.resolverAprobador(
           paso.empresaId,
@@ -255,7 +255,7 @@ export class VacacionesService {
           solicitante,
         );
 
-        // No se sustituye un Rector inexistente por SUPERADMIN: debe corregirse la configuracion institucional.
+        // No se sustituye un DIRECTOR inexistente por SUPERADMIN: debe corregirse la configuracion institucional.
         if (nuevoAprobadorId === null || nuevoAprobadorId === solicitante.id) {
           logger.error('No se puede escalar la solicitud: no hay un aprobador valido', {
             empresaId: paso.empresaId,
@@ -522,7 +522,7 @@ export class VacacionesService {
     return new Date(asignadoAt.getTime() + plazoHoras * MS_POR_HORA);
   }
 
-  // Asigna el primer paso; si no hay jefe inmediato activo, dirige la solicitud al Rector.
+  // Asigna el primer paso; si no hay jefe inmediato activo, dirige la solicitud al DIRECTOR.
   private async armarPrimerPaso(
     empresaId: number,
     solicitante: Solicitante,
@@ -533,13 +533,15 @@ export class VacacionesService {
       empresaId,
       solicitante.nivelJerarquico,
     );
-    let tipoAprobador = ruta[0];
+    const primerTipoAprobador = ruta[0];
 
-    if (tipoAprobador === undefined) {
+    if (primerTipoAprobador === undefined) {
       throw AppError.reglaDeNegocio(
         'El hospital no tiene una ruta de aprobacion definida para tu nivel',
       );
     }
+
+    let tipoAprobador: TipoAprobador = primerTipoAprobador;
 
     let aprobadorId = await this.deps.repositorio.resolverAprobador(
       empresaId,
@@ -547,9 +549,9 @@ export class VacacionesService {
       solicitante,
     );
 
-    // Sin jefe inmediato activo, la solicitud se asigna directamente al Rector.
+    // Sin jefe inmediato activo, la solicitud se asigna directamente al DIRECTOR.
     if (aprobadorId === null && tipoAprobador === 'JEFE_INMEDIATO') {
-      tipoAprobador = 'AUTORIDAD_MAXIMA';
+      tipoAprobador = 'DIRECTOR';
       aprobadorId = await this.deps.repositorio.resolverAprobador(
         empresaId,
         tipoAprobador,

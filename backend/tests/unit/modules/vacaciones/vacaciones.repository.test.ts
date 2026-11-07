@@ -291,30 +291,30 @@ describe('resolverAprobador', () => {
     ).resolves.toBeNull();
   });
 
-  it('resuelve la autoridad máxima cuando existe exactamente un cargo de nivel uno activo', async () => {
+  it('resuelve al Director cuando existe exactamente un usuario activo con el rol DIRECTOR', async () => {
     consultar.mockResolvedValueOnce([{ id: 1 }]);
 
     await expect(
-      repositorio.resolverAprobador(7, 'AUTORIDAD_MAXIMA', solicitante),
+      repositorio.resolverAprobador(7, 'DIRECTOR', solicitante),
     ).resolves.toBe(1);
 
-    expect(obtenerLlamada(consultar.mock.calls, 0)[0]).toContain('c.nivel_jerarquico = 1');
-    expect(obtenerLlamada(consultar.mock.calls, 0)[0]).not.toContain("r.codigo = 'AUTORIDAD_MAXIMA'");
+    expect(obtenerLlamada(consultar.mock.calls, 0)[0]).toContain("r.codigo = 'DIRECTOR'");
+    expect(obtenerLlamada(consultar.mock.calls, 0)[0]).not.toContain("c.nivel_jerarquico = 1");
   });
 
-  it('devuelve null si no existe una autoridad máxima activa', async () => {
+  it('devuelve null si no existe un Director activo', async () => {
     consultar.mockResolvedValueOnce([]);
 
     await expect(
-      repositorio.resolverAprobador(7, 'AUTORIDAD_MAXIMA', solicitante),
+      repositorio.resolverAprobador(7, 'DIRECTOR', solicitante),
     ).resolves.toBeNull();
   });
 
-  it('devuelve null si existen varias autoridades máximas activas', async () => {
+  it('devuelve null si existen varios usuarios activos con el rol DIRECTOR', async () => {
     consultar.mockResolvedValueOnce([{ id: 1 }, { id: 2 }]);
 
     await expect(
-      repositorio.resolverAprobador(7, 'AUTORIDAD_MAXIMA', solicitante),
+      repositorio.resolverAprobador(7, 'DIRECTOR', solicitante),
     ).resolves.toBeNull();
   });
 
@@ -402,7 +402,7 @@ describe('escalarPasoVencido', () => {
   const datos: DatosEscalamientoPlazo = {
     solicitudId: 30,
     pasoId: 40,
-    nuevoTipoAprobador: 'AUTORIDAD_MAXIMA',
+    nuevoTipoAprobador: 'DIRECTOR',
     nuevoAprobadorId: 1,
     nuevaOrden: 2,
     escaladoAt: ahora,
@@ -430,7 +430,7 @@ describe('escalarPasoVencido', () => {
     ]);
     expect(obtenerLlamadaEjecutar(1)[0]).toContain("'ESCALAMIENTO_PLAZO'");
     expect(obtenerLlamadaEjecutar(1)[1]).toEqual([
-      7, 30, 2, 'AUTORIDAD_MAXIMA', 1, 40,
+      7, 30, 2, 'DIRECTOR', 1, 40,
       datos.motivo, ahora, venceAt,
     ]);
   });

@@ -19,7 +19,7 @@ CREATE TABLE rutas_aprobacion (
   empresa_id        BIGINT UNSIGNED NOT NULL,
   nivel_solicitante TINYINT UNSIGNED NOT NULL,  -- cargos.nivel_jerarquico de quien solicita
   orden             TINYINT UNSIGNED NOT NULL,  -- 1 es el primer paso
-  tipo_aprobador    ENUM('JEFE_INMEDIATO','JEFE_AREA','AUTORIDAD_MAXIMA','SUPERADMIN') NOT NULL,
+  tipo_aprobador    ENUM('JEFE_INMEDIATO','JEFE_AREA','DIRECTOR','SUPERADMIN') NOT NULL,
   PRIMARY KEY (empresa_id, nivel_solicitante, orden),
   CONSTRAINT fk_rutas_empresa FOREIGN KEY (empresa_id) REFERENCES empresas (id),
   CONSTRAINT ck_rutas_nivel CHECK (nivel_solicitante BETWEEN 1 AND 5),
@@ -57,7 +57,7 @@ CREATE TABLE solicitud_aprobaciones (
   empresa_id        BIGINT UNSIGNED NOT NULL,
   solicitud_id      BIGINT UNSIGNED NOT NULL,
   orden             TINYINT UNSIGNED NOT NULL,  -- paso de la ruta al que pertenece
-  tipo_aprobador    ENUM('JEFE_INMEDIATO','JEFE_AREA','AUTORIDAD_MAXIMA','SUPERADMIN') NOT NULL,
+  tipo_aprobador    ENUM('JEFE_INMEDIATO','JEFE_AREA','DIRECTOR','SUPERADMIN') NOT NULL,
   origen            ENUM('RUTA','ESCALAMIENTO_MANUAL','ESCALAMIENTO_PLAZO') NOT NULL DEFAULT 'RUTA',
   aprobador_id      BIGINT UNSIGNED NOT NULL,   -- responsable asignado al crear el paso (no cambia si despues cambia el jefe)
   estado            ENUM('PENDIENTE','APROBADO','NEGADO','ESCALADO','CANCELADO') NOT NULL DEFAULT 'PENDIENTE',

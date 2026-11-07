@@ -14,14 +14,14 @@ import { fechaHoraLegible } from '@/features/dashboard/model/dashboard.utils';
 const NOMBRES_APROBADORES: Record<TipoAprobador, string> = {
   JEFE_INMEDIATO: 'Jefe inmediato',
   JEFE_AREA: 'Jefe de área',
-  AUTORIDAD_MAXIMA: 'Autoridad máxima',
+  DIRECTOR: 'Director',
   SUPERADMIN: 'Superadministrador',
 };
 
 const QUIEN_DECIDE: Record<TipoAprobador, string> = {
   JEFE_INMEDIATO: 'su jefe inmediato',
   JEFE_AREA: 'el jefe de área',
-  AUTORIDAD_MAXIMA: 'la autoridad máxima',
+  DIRECTOR: 'el Director',
   SUPERADMIN: 'el superadministrador',
 };
 

@@ -158,7 +158,7 @@ describe('crear contra MySQL', () => {
   it('el subdirector va al Director y el Director al SUPERADMIN', async () => {
     const silvia = await actorDe('0900000003');
     const deSilvia = await servicio.crear(silvia, programada);
-    expect(deSilvia.pasos[0]).toMatchObject({ tipoAprobador: 'AUTORIDAD_MAXIMA' });
+    expect(deSilvia.pasos[0]).toMatchObject({ tipoAprobador: 'DIRECTOR' });
     expect(deSilvia.pasos[0]?.aprobador.nombres).toBe('Diego');
 
     const diego = await actorDe('0900000002');
@@ -167,10 +167,10 @@ describe('crear contra MySQL', () => {
     expect(deDiego.pasos[0]?.aprobador.nombres).toBe('Sara');
   });
 
-  it('Pablo no tiene jefe inmediato: se asigna directamente al Rector', async () => {
+  it('Pablo no tiene jefe inmediato: se asigna directamente al Director', async () => {
     const pablo = await actorDe('0900000013');
     const solicitud = await servicio.crear(pablo, programada);
-    expect(solicitud.pasos[0]).toMatchObject({ tipoAprobador: 'AUTORIDAD_MAXIMA', estado: 'PENDIENTE' });
+    expect(solicitud.pasos[0]).toMatchObject({ tipoAprobador: 'DIRECTOR', estado: 'PENDIENTE' });
   });
 
   it('Ivan, dado de baja, no puede solicitar', async () => {
@@ -461,7 +461,7 @@ describe('decidir contra MySQL', () => {
     expect(await notificacionesDe(silvia.id)).toEqual([
       {
         tipo: 'SOLICITUD_NEGADA',
-        mensaje: 'Tu solicitud de Vacaciones fue negada por el Rector. Motivo: Falta personal en el servicio',
+        mensaje: 'Tu solicitud de Vacaciones fue negada por el Director. Motivo: Falta personal en el servicio',
         referenciaId: id,
       },
     ]);
@@ -507,7 +507,7 @@ describe('decidir contra MySQL', () => {
     const id = await idDeSolicitud('0900000005', '2027-03-22');
     // Tomas es de nivel 4: se le agrega un segundo paso a la ruta de ese nivel solo durante esta prueba
     await bd.ejecutar(
-      "INSERT INTO rutas_aprobacion (empresa_id, nivel_solicitante, orden, tipo_aprobador) VALUES (1, 4, 2, 'AUTORIDAD_MAXIMA')",
+      "INSERT INTO rutas_aprobacion (empresa_id, nivel_solicitante, orden, tipo_aprobador) VALUES (1, 4, 2, 'DIRECTOR')",
     );
     try {
       const intermedia = await servicio.aprobar(teresa, id, {});
@@ -515,7 +515,7 @@ describe('decidir contra MySQL', () => {
       expect(intermedia.pasos).toHaveLength(2);
       expect(intermedia.pasos[1]).toMatchObject({
         orden: 2,
-        tipoAprobador: 'AUTORIDAD_MAXIMA',
+        tipoAprobador: 'DIRECTOR',
         estado: 'PENDIENTE',
         venceAt: new Date('2026-10-15T16:00:00Z'),
       });
@@ -531,7 +531,7 @@ describe('decidir contra MySQL', () => {
       expect(await usadosPorPeriodo(tomas.id)).toEqual([0, 1]);
       const avisos = await notificacionesDe(tomas.id);
       expect(avisos).toHaveLength(1);
-      expect(avisos[0]?.mensaje).toBe('¡Buenas noticias, Tomás! Tu solicitud de Vacaciones fue aprobada por el Rector.');
+      expect(avisos[0]?.mensaje).toBe('¡Buenas noticias, Tomás! Tu solicitud de Vacaciones fue aprobada por el Director.');
     } finally {
       await bd.ejecutar('DELETE FROM rutas_aprobacion WHERE empresa_id = 1 AND nivel_solicitante = 4 AND orden = 2');
     }
